@@ -1,0 +1,37 @@
+{
+  "name": "vibewatch-mcp",
+  "version": "0.1.0",
+  "description": "Connect any MCP client to your Vibewatch community-sentiment data. Wraps mcp-remote with the Vibewatch server URL and key handling built in.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vibewatch-io/vibewatch-mcp.git"
+  },
+  "homepage": "https://vibewatch.io",
+  "bugs": {
+    "url": "https://github.com/Vibewatch-io/vibewatch-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "vibewatch",
+    "community",
+    "sentiment",
+    "buzz"
+  ],
+  "bin": {
+    "vibewatch-mcp": "bin/vibewatch-mcp.js"
+  },
+  "files": [
+    "bin/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "mcp-remote": "^0.1.38"
+  }
+}
