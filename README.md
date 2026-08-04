@@ -2,7 +2,7 @@
 
 Connect any MCP client to your [Vibewatch](https://vibewatch.io) community-sentiment data.
 
-Vibewatch's MCP server exposes six read-only tools over your organization's data — sentiment overview, message search, daily insights, weekly reports, market context, and org details. This package is a thin stdio bridge to that server: it wraps [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) with the Vibewatch server URL and key handling built in, so agents that speak stdio MCP (Buzz agents, Claude Code, Goose, Codex) connect with one binary and one environment variable.
+Vibewatch's MCP server exposes seven read-only tools over your organization's data — sentiment overview, sentiment trend, message search, daily insights, weekly reports, market context, and org details. This package is a thin stdio bridge to that server: it wraps [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) with the Vibewatch server URL and key handling built in, so agents that speak stdio MCP (Buzz agents, Claude Code, Goose, Codex) connect with one binary and one environment variable.
 
 ## Install
 
@@ -70,6 +70,7 @@ The key never appears in the process argument list — the bridge hands `mcp-rem
 | Tool | What it returns |
 |---|---|
 | `get_sentiment_overview` | Current vibe score and how it moved |
+| `get_sentiment_timeseries` | Daily vibe trend over up to 180 days |
 | `search_messages` | Community messages matching a query |
 | `get_daily_insights` | Daily highlights and themes |
 | `get_reports` | Weekly report content |
