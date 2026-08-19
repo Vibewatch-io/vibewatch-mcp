@@ -29,6 +29,7 @@ const {
   DEFAULT_URL,
   AUTH_FAILURE_RE,
   AUTH_PROMPT_RE,
+  AUTH_WAIT_RE,
   PROXY_UP_RE,
   bridgeArgs,
   makeLineSplitter,
@@ -126,7 +127,10 @@ function runBridge() {
     // re-auth (revoked key, failed refresh). A successful re-auth re-prints
     // the proxy-established line ("Recursively reconnecting" path), so the
     // timer armed here is cleared when the session actually recovers.
-    if (AUTH_PROMPT_RE.test(line)) {
+    // AUTH_WAIT_RE covers the shared-auth path, whose lines never include
+    // the authorize-URL prompt — without it, the loser of a sign-in
+    // lockfile race would hold the client's stdio session forever.
+    if (AUTH_PROMPT_RE.test(line) || AUTH_WAIT_RE.test(line)) {
       connected = false;
       if (keyMode) {
         // A rejected key surfaces as a silent 401 that drops mcp-remote into
