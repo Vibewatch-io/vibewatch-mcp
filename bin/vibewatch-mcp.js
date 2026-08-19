@@ -42,6 +42,19 @@ const {
 // enough for a human to approve on an interactive first connect.
 const BRIDGE_AUTH_WAIT_MS = 180_000;
 
+function writeAuthGuidance(keyMode) {
+  process.stderr.write(
+    keyMode
+      ? "\nvibewatch-mcp: the server rejected this VIBEWATCH_MCP_KEY. " +
+          "Check the key (it should start with vw_mcp_), or mint a new " +
+          "one in app.vibewatch.io → Settings → API Access.\n"
+      : "\nvibewatch-mcp: not signed in (or the sign-in expired). " +
+          "Run `vibewatch-mcp connect-buzz` to sign in via the browser, " +
+          "or set VIBEWATCH_MCP_KEY to an org key from " +
+          "app.vibewatch.io → Settings → API Access.\n"
+  );
+}
+
 function runBridge() {
   const keyMode = Boolean(process.env.VIBEWATCH_MCP_KEY);
   const serverUrl = process.env.VIBEWATCH_MCP_URL || DEFAULT_URL;
@@ -57,62 +70,91 @@ function runBridge() {
   );
 
   // Forward stderr while watching for the signatures of failed
-  // authentication, so the exit message can name the actual fix.
+  // authentication, so the exit message can name the actual fix. Matching is
+  // line-buffered — a signature can span two stream chunks otherwise.
   let sawAuthFailure = false;
+  // Set only when WE kill the child for an auth reason. The child may handle
+  // that SIGINT and exit 0, so the child's exit result alone can't be
+  // trusted to report the failure.
+  let authAbort = false;
+  let forwardedSignal = null;
   let authTimer = null;
-  child.stderr.on("data", (chunk) => {
-    process.stderr.write(chunk);
-    const text = chunk.toString();
-    if (AUTH_FAILURE_RE.test(text)) {
+  let lineBuffer = "";
+
+  const handleLine = (line) => {
+    if (AUTH_FAILURE_RE.test(line)) {
       sawAuthFailure = true;
     }
-    if (AUTH_PROMPT_RE.test(text)) {
+    if (AUTH_PROMPT_RE.test(line)) {
       if (keyMode) {
         // A rejected key surfaces as a silent 401 that drops mcp-remote into
         // its interactive OAuth fallback — never right for a key user. Bail
         // out instead of hanging on a browser prompt.
-        sawAuthFailure = true;
+        authAbort = true;
         child.kill("SIGINT");
       } else if (!authTimer) {
         authTimer = setTimeout(() => {
-          sawAuthFailure = true;
+          authAbort = true;
           child.kill("SIGINT");
         }, BRIDGE_AUTH_WAIT_MS);
       }
     }
-    if (PROXY_UP_RE.test(text) && authTimer) {
+    if (PROXY_UP_RE.test(line) && authTimer) {
       clearTimeout(authTimer);
       authTimer = null;
+    }
+  };
+
+  child.stderr.on("data", (chunk) => {
+    process.stderr.write(chunk);
+    lineBuffer += chunk.toString();
+    let newline;
+    while ((newline = lineBuffer.indexOf("\n")) !== -1) {
+      handleLine(lineBuffer.slice(0, newline));
+      lineBuffer = lineBuffer.slice(newline + 1);
     }
   });
 
   const forwardedSignals = ["SIGINT", "SIGTERM", "SIGHUP"];
+  let killTimer = null;
   for (const signal of forwardedSignals) {
     process.on(signal, () => {
+      forwardedSignal = signal;
       child.kill(signal);
+      // The pinned mcp-remote ignores SIGTERM, which would leave both
+      // processes orphaned when a harness stops the bridge — escalate.
+      if (!killTimer) {
+        killTimer = setTimeout(() => child.kill("SIGKILL"), 3_000);
+        killTimer.unref();
+      }
     });
   }
 
-  child.on("exit", (code, signal) => {
+  // `close`, not `exit`: it fires after the stderr pipe drains, so trailing
+  // authentication output still reaches the matcher.
+  child.on("close", (code, signal) => {
+    if (lineBuffer !== "") handleLine(lineBuffer);
     if (authTimer) clearTimeout(authTimer);
-    if (signal && !sawAuthFailure) {
-      // Re-raise with the default disposition restored, so the signal
-      // terminates us instead of re-entering the forwarding handler.
+    if (killTimer) clearTimeout(killTimer);
+    if (authAbort) {
+      // We ended the session over auth; the child's own exit code (often 0,
+      // from its SIGINT handler) must not report success.
+      writeAuthGuidance(keyMode);
+      process.exit(1);
+    }
+    if (forwardedSignal) {
+      // The user (or supervisor) stopped us — re-raise with the default
+      // disposition restored so the signal terminates the process normally,
+      // whatever stderr happened to contain.
       for (const s of forwardedSignals) process.removeAllListeners(s);
-      process.kill(process.pid, signal);
+      process.kill(process.pid, forwardedSignal);
       return;
     }
-    if ((code !== 0 || signal) && sawAuthFailure) {
-      process.stderr.write(
-        keyMode
-          ? "\nvibewatch-mcp: the server rejected this VIBEWATCH_MCP_KEY. " +
-              "Check the key (it should start with vw_mcp_), or mint a new " +
-              "one in app.vibewatch.io → Settings → API Access.\n"
-          : "\nvibewatch-mcp: not signed in (or the sign-in expired). " +
-              "Run `vibewatch-mcp connect-buzz` to sign in via the browser, " +
-              "or set VIBEWATCH_MCP_KEY to an org key from " +
-              "app.vibewatch.io → Settings → API Access.\n"
-      );
+    if (code !== 0 && sawAuthFailure) {
+      writeAuthGuidance(keyMode);
+    }
+    if (signal) {
+      process.exit(1);
     }
     process.exit(code === null ? 1 : code);
   });

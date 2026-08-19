@@ -126,3 +126,26 @@ test("parseArgs rejects unsafe or unparseable URLs", () => {
     /can't pass through safely/
   );
 });
+
+test("parseArgs allows http only for localhost", () => {
+  // mcp-remote refuses non-local plain http, so accepting it here would
+  // just fail later with a worse message.
+  const opts = connect.parseArgs(["--url", "http://localhost:8000/mcp/"]);
+  assert.equal(opts.url, "http://localhost:8000/mcp/");
+  assert.throws(
+    () => connect.parseArgs(["--url", "http://example.internal/mcp/"]),
+    /only allowed for localhost/
+  );
+});
+
+test("auth-failure regex ignores 401 inside a port number", async () => {
+  const { AUTH_FAILURE_RE } = require("../lib/common.js");
+  assert.equal(
+    AUTH_FAILURE_RE.test(
+      "[123] OAuth callback server running at http://127.0.0.1:3401"
+    ),
+    false
+  );
+  assert.ok(AUTH_FAILURE_RE.test("Error POSTing to endpoint (HTTP 401)"));
+  assert.ok(AUTH_FAILURE_RE.test("Server responded: Unauthorized"));
+});
