@@ -111,7 +111,10 @@ function runBridge() {
     if (!connected && AUTH_FAILURE_RE.test(line)) {
       sawAuthFailure = true;
     }
-    if (AUTH_PROMPT_RE.test(line)) {
+    // The prompt branch is pre-connection policy too: after the proxy is
+    // up, a re-auth prompt (mcp-remote's own recovery from a mid-session
+    // 401) must not make us kill a working session.
+    if (!connected && AUTH_PROMPT_RE.test(line)) {
       if (keyMode) {
         // A rejected key surfaces as a silent 401 that drops mcp-remote into
         // its interactive OAuth fallback — never right for a key user. Bail

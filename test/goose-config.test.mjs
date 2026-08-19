@@ -87,3 +87,10 @@ test("throws on unparseable YAML rather than clobbering the file", () => {
     /could not parse Goose config/
   );
 });
+
+test("refuses a non-null scalar `extensions` value instead of deleting it", () => {
+  assert.throws(
+    () => upsertVibewatchExtension("extensions: disabled\n"),
+    /`extensions` is not a mapping/
+  );
+});

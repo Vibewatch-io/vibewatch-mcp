@@ -126,6 +126,19 @@ test("findOnPath finds the running node and misses nonsense", () => {
   }
 });
 
+test("a malformed env key is dropped with a warning flag, not fatal", () => {
+  const saved = process.env.VIBEWATCH_MCP_KEY;
+  process.env.VIBEWATCH_MCP_KEY = "none";
+  try {
+    const opts = connect.parseArgs([]);
+    assert.equal(opts.key, null);
+    assert.equal(opts.envKeyIgnored, true);
+  } finally {
+    if (saved !== undefined) process.env.VIBEWATCH_MCP_KEY = saved;
+    else delete process.env.VIBEWATCH_MCP_KEY;
+  }
+});
+
 test("parseArgs rejects a malformed key", () => {
   assert.throws(
     () => connect.parseArgs(["--key", "not-a-key"]),
