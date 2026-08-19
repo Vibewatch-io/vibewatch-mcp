@@ -108,9 +108,15 @@ function runBridge() {
         }, BRIDGE_AUTH_WAIT_MS);
       }
     }
-    if (PROXY_UP_RE.test(line) && authTimer) {
-      clearTimeout(authTimer);
-      authTimer = null;
+    if (PROXY_UP_RE.test(line)) {
+      if (authTimer) {
+        clearTimeout(authTimer);
+        authTimer = null;
+      }
+      // Scope the failure flag to pre-connection output — a transient 401
+      // logged later (e.g. around a token refresh) must not turn an
+      // unrelated exit into misleading auth guidance.
+      sawAuthFailure = false;
     }
   });
 
