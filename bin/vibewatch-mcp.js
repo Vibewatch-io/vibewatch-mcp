@@ -31,6 +31,8 @@ const {
   AUTH_PROMPT_RE,
   PROXY_UP_RE,
   bridgeArgs,
+  makeLineSplitter,
+  killChild,
   resolveMcpRemoteBin,
   fail,
 } = require("../lib/common.js");
@@ -79,9 +81,16 @@ function runBridge() {
   let authAbort = false;
   let forwardedSignal = null;
   let authTimer = null;
-  let lineBuffer = "";
+  let killTimer = null;
 
-  const handleLine = (line) => {
+  // mcp-remote's auth coordinator installs a SIGINT handler that cleans up
+  // and never exits, so every kill needs the SIGKILL escalation.
+  const endChild = (signal) => {
+    child.kill(signal);
+    if (!killTimer) killTimer = killChild(child, 3_000);
+  };
+
+  const splitter = makeLineSplitter((line) => {
     if (AUTH_FAILURE_RE.test(line)) {
       sawAuthFailure = true;
     }
@@ -91,11 +100,11 @@ function runBridge() {
         // its interactive OAuth fallback — never right for a key user. Bail
         // out instead of hanging on a browser prompt.
         authAbort = true;
-        child.kill("SIGINT");
+        endChild("SIGINT");
       } else if (!authTimer) {
         authTimer = setTimeout(() => {
           authAbort = true;
-          child.kill("SIGINT");
+          endChild("SIGINT");
         }, BRIDGE_AUTH_WAIT_MS);
       }
     }
@@ -103,44 +112,37 @@ function runBridge() {
       clearTimeout(authTimer);
       authTimer = null;
     }
-  };
+  });
 
   child.stderr.on("data", (chunk) => {
     process.stderr.write(chunk);
-    lineBuffer += chunk.toString();
-    let newline;
-    while ((newline = lineBuffer.indexOf("\n")) !== -1) {
-      handleLine(lineBuffer.slice(0, newline));
-      lineBuffer = lineBuffer.slice(newline + 1);
-    }
+    splitter.push(chunk);
   });
 
   const forwardedSignals = ["SIGINT", "SIGTERM", "SIGHUP"];
-  let killTimer = null;
   for (const signal of forwardedSignals) {
     process.on(signal, () => {
       forwardedSignal = signal;
-      child.kill(signal);
       // The pinned mcp-remote ignores SIGTERM, which would leave both
-      // processes orphaned when a harness stops the bridge — escalate.
-      if (!killTimer) {
-        killTimer = setTimeout(() => child.kill("SIGKILL"), 3_000);
-        killTimer.unref();
-      }
+      // processes orphaned when a harness stops the bridge — endChild's
+      // escalation covers it.
+      endChild(signal);
     });
   }
 
   // `close`, not `exit`: it fires after the stderr pipe drains, so trailing
-  // authentication output still reaches the matcher.
+  // authentication output still reaches the matcher. Exit via exitCode, not
+  // process.exit(), so our own piped stderr drains before termination.
   child.on("close", (code, signal) => {
-    if (lineBuffer !== "") handleLine(lineBuffer);
+    splitter.flush();
     if (authTimer) clearTimeout(authTimer);
     if (killTimer) clearTimeout(killTimer);
     if (authAbort) {
       // We ended the session over auth; the child's own exit code (often 0,
       // from its SIGINT handler) must not report success.
       writeAuthGuidance(keyMode);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
     if (forwardedSignal) {
       // The user (or supervisor) stopped us — re-raise with the default
@@ -153,10 +155,7 @@ function runBridge() {
     if (code !== 0 && sawAuthFailure) {
       writeAuthGuidance(keyMode);
     }
-    if (signal) {
-      process.exit(1);
-    }
-    process.exit(code === null ? 1 : code);
+    process.exitCode = signal ? 1 : code === null ? 1 : code;
   });
 
   child.on("error", (err) => {
@@ -168,7 +167,10 @@ const subcommand = process.argv[2];
 if (subcommand === "connect-buzz" || subcommand === "connect") {
   require("../lib/connect.js")
     .run(process.argv.slice(3))
-    .then((code) => process.exit(code))
+    .then((code) => {
+      // exitCode, not process.exit(): a piped stderr must drain first.
+      process.exitCode = code;
+    })
     .catch((err) => fail(err.message));
 } else {
   runBridge();

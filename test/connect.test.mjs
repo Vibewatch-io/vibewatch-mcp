@@ -10,7 +10,8 @@ const connect = require("../lib/connect.js");
 const { DEFAULT_URL } = require("../lib/common.js");
 
 test("parseArgs defaults: OAuth mode against the production URL", () => {
-  const saved = { ...process.env };
+  const savedKey = process.env.VIBEWATCH_MCP_KEY;
+  const savedUrl = process.env.VIBEWATCH_MCP_URL;
   delete process.env.VIBEWATCH_MCP_KEY;
   delete process.env.VIBEWATCH_MCP_URL;
   try {
@@ -20,7 +21,10 @@ test("parseArgs defaults: OAuth mode against the production URL", () => {
     assert.equal(opts.harnesses, null);
     assert.equal(opts.reset, false);
   } finally {
-    process.env = saved;
+    // Restore keys individually — replacing process.env wholesale de-syncs
+    // it from the real environment.
+    if (savedKey !== undefined) process.env.VIBEWATCH_MCP_KEY = savedKey;
+    if (savedUrl !== undefined) process.env.VIBEWATCH_MCP_URL = savedUrl;
   }
 });
 
@@ -99,9 +103,19 @@ test("resetCachedAuth clears this server's entries across every version dir", ()
   }
 });
 
-test("findOnPath finds node and misses nonsense", () => {
-  assert.ok(connect.findOnPath("node"));
-  assert.equal(connect.findOnPath("definitely-not-a-real-binary-xyz"), null);
+test("findOnPath finds the running node and misses nonsense", () => {
+  // Search for the actual executable running this test, with its directory
+  // added to PATH — CI runners may invoke node via an absolute path.
+  const execDir = path.dirname(process.execPath);
+  const execName = path.basename(process.execPath);
+  const savedPath = process.env.PATH;
+  process.env.PATH = `${execDir}${path.delimiter}${savedPath || ""}`;
+  try {
+    assert.ok(connect.findOnPath(execName));
+    assert.equal(connect.findOnPath("definitely-not-a-real-binary-xyz"), null);
+  } finally {
+    process.env.PATH = savedPath;
+  }
 });
 
 test("parseArgs rejects a malformed key", () => {
