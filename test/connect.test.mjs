@@ -139,6 +139,10 @@ test("a malformed env key is dropped with a warning flag, not fatal", () => {
   }
 });
 
+test("an explicit empty --key errors instead of downgrading to OAuth", () => {
+  assert.throws(() => connect.parseArgs(["--key", ""]), /empty value/);
+});
+
 test("parseArgs rejects a malformed key", () => {
   assert.throws(
     () => connect.parseArgs(["--key", "not-a-key"]),
