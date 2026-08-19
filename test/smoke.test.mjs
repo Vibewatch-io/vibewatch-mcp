@@ -1,9 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+
+const require = createRequire(import.meta.url);
+const { bridgeArgs } = require("../lib/common.js");
 
 const bin = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -12,16 +15,29 @@ const bin = path.join(
   "vibewatch-mcp.js"
 );
 
-test("key placeholder, not the key value, is what would reach argv", async () => {
-  const source = await readFile(bin, "utf8");
-  assert.match(source, /Authorization: Bearer \$\{VIBEWATCH_MCP_KEY\}/);
+test("bridgeArgs: key mode sends the placeholder header, never the key", () => {
+  const args = bridgeArgs({
+    keyMode: true,
+    serverUrl: "https://api.vibewatch.io/mcp/",
+  });
+  assert.ok(args.includes("--header"));
+  assert.ok(args.includes("Authorization: Bearer ${VIBEWATCH_MCP_KEY}"));
+  assert.ok(!args.some((a) => a.includes("vw_mcp_")));
 });
 
-test("without a key the bridge spawns in OAuth mode (no header arg)", async () => {
-  // The bridge must not send an Authorization header when no key is set —
-  // that is what lets mcp-remote fall through to the cached OAuth sign-in.
-  const source = await readFile(bin, "utf8");
-  assert.match(source, /keyMode\s*\?\s*\["--header"/);
+test("bridgeArgs: OAuth mode sends no header, so cached sign-in applies", () => {
+  const args = bridgeArgs({
+    keyMode: false,
+    serverUrl: "https://api.vibewatch.io/mcp/",
+    passthrough: ["--debug"],
+  });
+  assert.ok(!args.includes("--header"));
+  assert.deepEqual(args.slice(0, 3), [
+    "https://api.vibewatch.io/mcp/",
+    "--transport",
+    "http-only",
+  ]);
+  assert.equal(args.at(-1), "--debug");
 });
 
 test("connect-buzz --help prints usage and exits 0", () => {

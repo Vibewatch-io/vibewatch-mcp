@@ -64,7 +64,7 @@ With no `VIBEWATCH_MCP_KEY` set, the bridge uses the cached browser sign-in (run
 
 Extra CLI arguments (e.g. `--debug`) pass through to `mcp-remote`.
 
-The key never appears in the process argument list — the bridge hands `mcp-remote` a `${VIBEWATCH_MCP_KEY}` placeholder and `mcp-remote` reads the value from the environment.
+The bridge never puts the key on a process argument list — it hands `mcp-remote` a `${VIBEWATCH_MCP_KEY}` placeholder and `mcp-remote` reads the value from the environment. One caveat: `connect-buzz --key` drives the harness CLIs (`claude mcp add -e ...`, `codex mcp add --env ...`), which only accept env values as arguments, so the key is briefly visible in those short-lived processes' argv. If that matters on your machine, use the browser sign-in instead — it involves no key at all.
 
 ## Tools
 

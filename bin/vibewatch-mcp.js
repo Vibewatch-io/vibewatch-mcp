@@ -16,14 +16,31 @@
  * Optional env:  VIBEWATCH_MCP_URL  — override the server URL (self-hosted /
  *                staging).
  *
- * The key is passed to mcp-remote as the literal string
- * "Authorization: Bearer ${VIBEWATCH_MCP_KEY}" — mcp-remote expands the env
- * var itself, so the key never appears in the process argument list.
+ * The bridge never puts the key on a process argument list — mcp-remote gets
+ * the literal string "Authorization: Bearer ${VIBEWATCH_MCP_KEY}" and expands
+ * the env var itself. (`connect-buzz --key` is different: the harness CLIs it
+ * drives only accept env values as arguments, so the key is briefly visible
+ * in their argv — documented in the README.)
  */
 
 const { spawn } = require("node:child_process");
 
-const { DEFAULT_URL, resolveMcpRemoteBin, fail } = require("../lib/common.js");
+const {
+  DEFAULT_URL,
+  AUTH_FAILURE_RE,
+  AUTH_PROMPT_RE,
+  PROXY_UP_RE,
+  bridgeArgs,
+  resolveMcpRemoteBin,
+  fail,
+} = require("../lib/common.js");
+
+// How long the bridge waits for a browser sign-in after mcp-remote prints the
+// authorization prompt. mcp-remote itself never times this wait out (its
+// --auth-timeout only bounds a secondary-instance long poll), so without this
+// timer a headless host with no cached sign-in would hang forever. Long
+// enough for a human to approve on an interactive first connect.
+const BRIDGE_AUTH_WAIT_MS = 180_000;
 
 function runBridge() {
   const keyMode = Boolean(process.env.VIBEWATCH_MCP_KEY);
@@ -31,59 +48,57 @@ function runBridge() {
   const mcpRemoteBin = resolveMcpRemoteBin();
 
   // Extra args (e.g. --debug) pass straight through to mcp-remote.
-  // --auth-timeout bounds the OAuth wait: with cached tokens (seeded by
-  // `connect-buzz`) no prompt ever appears; without them, headless hosts (Buzz
-  // agent sandboxes, CI) fail fast instead of waiting on a browser that will
-  // never open. User-supplied flags come later and win.
   const passthrough = process.argv.slice(2);
 
   const child = spawn(
     process.execPath,
-    [
-      mcpRemoteBin,
-      serverUrl,
-      "--transport",
-      "http-only",
-      ...(keyMode
-        ? ["--header", "Authorization: Bearer ${VIBEWATCH_MCP_KEY}"]
-        : []),
-      "--auth-timeout",
-      "30",
-      ...passthrough,
-    ],
+    [mcpRemoteBin, ...bridgeArgs({ keyMode, serverUrl, passthrough })],
     { stdio: ["inherit", "inherit", "pipe"] }
   );
 
   // Forward stderr while watching for the signatures of failed
   // authentication, so the exit message can name the actual fix.
   let sawAuthFailure = false;
+  let authTimer = null;
   child.stderr.on("data", (chunk) => {
     process.stderr.write(chunk);
     const text = chunk.toString();
-    if (
-      /401|Unauthorized|Requested scopes are not valid|InvalidClientMetadataError|Authentication timed out/i.test(
-        text
-      )
-    ) {
+    if (AUTH_FAILURE_RE.test(text)) {
       sawAuthFailure = true;
     }
-    // A rejected key surfaces as a silent 401 that drops mcp-remote into its
-    // interactive OAuth fallback — never right for a key user. Bail out
-    // instead of hanging on a browser prompt until the auth timeout.
-    if (keyMode && /Please authorize this client by visiting/.test(text)) {
-      sawAuthFailure = true;
-      child.kill("SIGINT");
+    if (AUTH_PROMPT_RE.test(text)) {
+      if (keyMode) {
+        // A rejected key surfaces as a silent 401 that drops mcp-remote into
+        // its interactive OAuth fallback — never right for a key user. Bail
+        // out instead of hanging on a browser prompt.
+        sawAuthFailure = true;
+        child.kill("SIGINT");
+      } else if (!authTimer) {
+        authTimer = setTimeout(() => {
+          sawAuthFailure = true;
+          child.kill("SIGINT");
+        }, BRIDGE_AUTH_WAIT_MS);
+      }
+    }
+    if (PROXY_UP_RE.test(text) && authTimer) {
+      clearTimeout(authTimer);
+      authTimer = null;
     }
   });
 
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  const forwardedSignals = ["SIGINT", "SIGTERM", "SIGHUP"];
+  for (const signal of forwardedSignals) {
     process.on(signal, () => {
       child.kill(signal);
     });
   }
 
   child.on("exit", (code, signal) => {
+    if (authTimer) clearTimeout(authTimer);
     if (signal && !sawAuthFailure) {
+      // Re-raise with the default disposition restored, so the signal
+      // terminates us instead of re-entering the forwarding handler.
+      for (const s of forwardedSignals) process.removeAllListeners(s);
       process.kill(process.pid, signal);
       return;
     }

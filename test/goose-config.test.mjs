@@ -69,6 +69,18 @@ test("carries key and URL envs when provided", () => {
   );
 });
 
+test("handles a bare `extensions:` key (null value) without throwing", () => {
+  for (const input of [
+    "extensions:\n",
+    "extensions: null\n",
+    "GOOSE_PROVIDER: anthropic\nextensions:\n",
+  ]) {
+    const out = upsertVibewatchExtension(input);
+    const parsed = YAML.parse(out);
+    assert.equal(parsed.extensions.vibewatch.cmd, "vibewatch-mcp");
+  }
+});
+
 test("throws on unparseable YAML rather than clobbering the file", () => {
   assert.throws(
     () => upsertVibewatchExtension("extensions: [unclosed"),

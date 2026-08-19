@@ -100,5 +100,29 @@ test("resetCachedAuth clears this server's entries across every version dir", ()
 });
 
 test("findOnPath finds node and misses nonsense", () => {
+  assert.ok(connect.findOnPath("node"));
   assert.equal(connect.findOnPath("definitely-not-a-real-binary-xyz"), null);
+});
+
+test("parseArgs rejects a malformed key", () => {
+  assert.throws(
+    () => connect.parseArgs(["--key", "not-a-key"]),
+    /vw_mcp_/
+  );
+  assert.throws(
+    () => connect.parseArgs(["--key", 'vw_mcp_abc"&whoami']),
+    /vw_mcp_/
+  );
+});
+
+test("parseArgs rejects unsafe or unparseable URLs", () => {
+  assert.throws(() => connect.parseArgs(["--url", "not a url"]), /valid URL/);
+  assert.throws(
+    () => connect.parseArgs(["--url", "ftp://example.test/mcp/"]),
+    /https/
+  );
+  assert.throws(
+    () => connect.parseArgs(["--url", 'https://example.test/mcp/"&whoami']),
+    /can't pass through safely/
+  );
 });
