@@ -41,13 +41,13 @@ Keys are org-scoped and read-only; revoke them any time from the same screen.
 
 ## Use with any stdio MCP client
 
-Generic client config (Claude Desktop and compatible):
+Generic client config (Claude Desktop and compatible). GUI apps on macOS start with a minimal PATH, so use the absolute path from `which vibewatch-mcp`:
 
 ```json
 {
   "mcpServers": {
     "vibewatch": {
-      "command": "vibewatch-mcp"
+      "command": "/opt/homebrew/bin/vibewatch-mcp"
     }
   }
 }
