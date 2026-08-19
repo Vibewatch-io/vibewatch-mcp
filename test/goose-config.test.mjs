@@ -94,3 +94,17 @@ test("refuses a non-null scalar `extensions` value instead of deleting it", () =
     /`extensions` is not a mapping/
   );
 });
+
+test("refuses a sequence `extensions` value (setIn would string-index it)", () => {
+  assert.throws(
+    () => upsertVibewatchExtension("extensions:\n  - developer\n"),
+    /`extensions` is not a mapping/
+  );
+});
+
+test("keeps a comment attached to a bare `extensions:` key", () => {
+  const out = upsertVibewatchExtension("extensions: # managed by hand\n");
+  assert.match(out, /managed by hand/);
+  const parsed = YAML.parse(out);
+  assert.equal(parsed.extensions.vibewatch.cmd, "vibewatch-mcp");
+});
