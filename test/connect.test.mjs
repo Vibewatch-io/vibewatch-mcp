@@ -115,7 +115,12 @@ test("findOnPath finds the running node and misses nonsense", () => {
   // Search for the actual executable running this test, with its directory
   // added to PATH — CI runners may invoke node via an absolute path.
   const execDir = path.dirname(process.execPath);
-  const execName = path.basename(process.execPath);
+  // findOnPath appends PATHEXT extensions itself on win32, so look up the
+  // extension-less name ("node", not "node.exe").
+  const execName = path.basename(
+    process.execPath,
+    path.extname(process.execPath)
+  );
   const savedPath = process.env.PATH;
   process.env.PATH = `${execDir}${path.delimiter}${savedPath || ""}`;
   try {

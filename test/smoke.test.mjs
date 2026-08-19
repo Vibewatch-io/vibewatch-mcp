@@ -65,9 +65,8 @@ test("connect-buzz rejects a malformed key before any network call", () => {
     [bin, "connect-buzz", "--key", "not-a-key"],
     { encoding: "utf8", env: { ...process.env, PATH: process.env.PATH } }
   );
-  // Either the malformed-key message (global install present) or the
-  // install-first message (no global vibewatch-mcp on PATH) — both are
-  // pre-network failures.
+  // parseArgs rejects the malformed key before the global-install check,
+  // so this message always fires regardless of PATH state.
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /vw_mcp_|install globally/);
+  assert.match(result.stderr, /vw_mcp_/);
 });

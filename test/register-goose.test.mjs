@@ -75,12 +75,22 @@ const posixNonRoot =
     ? { skip: true }
     : {};
 
-test("an unreadable config fails instead of being replaced", posixNonRoot, () => {
+test("an unreadable config fails instead of being replaced", posixNonRoot, (t) => {
   withTempConfigHome((configPath) => {
     mkdirSync(path.dirname(configPath), { recursive: true });
     writeFileSync(configPath, "GOOSE_PROVIDER: anthropic\n");
     chmodSync(configPath, 0o000);
     try {
+      // Some filesystems (certain container mounts) don't enforce the deny
+      // even for non-root — probe first and skip when the scenario can't
+      // be produced, rather than asserting a failure that won't happen.
+      try {
+        readFileSync(configPath, "utf8");
+        t.skip("filesystem does not enforce mode 0o000 for this user");
+        return;
+      } catch {
+        /* deny holds — proceed */
+      }
       const result = connect.registerGoose(OPTS);
       assert.equal(result.status, "failed");
       chmodSync(configPath, 0o600);
