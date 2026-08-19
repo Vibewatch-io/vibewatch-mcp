@@ -32,7 +32,6 @@ const {
   PROXY_UP_RE,
   bridgeArgs,
   makeLineSplitter,
-  killChild,
   resolveMcpRemoteBin,
   fail,
 } = require("../lib/common.js");
@@ -60,7 +59,13 @@ function writeAuthGuidance(keyMode) {
 function runBridge() {
   const keyMode = Boolean(process.env.VIBEWATCH_MCP_KEY);
   const serverUrl = process.env.VIBEWATCH_MCP_URL || DEFAULT_URL;
-  const mcpRemoteBin = resolveMcpRemoteBin();
+  let mcpRemoteBin;
+  try {
+    mcpRemoteBin = resolveMcpRemoteBin();
+  } catch (err) {
+    // Nothing has been written yet, so fail()'s inline exit is safe here.
+    fail(err.message);
+  }
 
   // Extra args (e.g. --debug) pass straight through to mcp-remote.
   const passthrough = process.argv.slice(2);
@@ -84,18 +89,26 @@ function runBridge() {
   let killTimer = null;
 
   // mcp-remote's auth coordinator installs a SIGINT handler that cleans up
-  // and never exits, so every kill needs the SIGKILL escalation.
+  // and never exits (and it ignores SIGTERM outright), so every kill is one
+  // signal plus a SIGKILL backstop.
   const endChild = (signal) => {
     child.kill(signal);
-    if (!killTimer) killTimer = killChild(child, 3_000);
+    if (!killTimer) {
+      killTimer = setTimeout(() => child.kill("SIGKILL"), 3_000);
+      killTimer.unref();
+    }
   };
 
   // NOTE: verifyAuth (lib/connect.js) interprets the same mcp-remote
   // signatures with deliberately different policy — interactive messaging
   // there, headless timeouts and exit codes here. A change to mcp-remote's
   // output lands in BOTH.
+  let connected = false;
   const splitter = makeLineSplitter((line) => {
-    if (AUTH_FAILURE_RE.test(line)) {
+    // Failure signatures only count before the proxy is up — a transient
+    // 401 around a token refresh must not turn a later unrelated exit into
+    // auth guidance.
+    if (!connected && AUTH_FAILURE_RE.test(line)) {
       sawAuthFailure = true;
     }
     if (AUTH_PROMPT_RE.test(line)) {
@@ -117,9 +130,7 @@ function runBridge() {
         clearTimeout(authTimer);
         authTimer = null;
       }
-      // Scope the failure flag to pre-connection output — a transient 401
-      // logged later (e.g. around a token refresh) must not turn an
-      // unrelated exit into misleading auth guidance.
+      connected = true;
       sawAuthFailure = false;
     }
   });
@@ -133,9 +144,8 @@ function runBridge() {
   for (const signal of forwardedSignals) {
     process.on(signal, () => {
       forwardedSignal = signal;
-      // The pinned mcp-remote ignores SIGTERM, which would leave both
-      // processes orphaned when a harness stops the bridge — endChild's
-      // escalation covers it.
+      // endChild's SIGKILL backstop covers mcp-remote ignoring SIGTERM,
+      // which would otherwise orphan both processes on a harness stop.
       endChild(signal);
     });
   }

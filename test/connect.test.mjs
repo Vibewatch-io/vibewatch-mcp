@@ -56,10 +56,18 @@ test("parseArgs rejects a flag missing its value", () => {
 });
 
 test("registrationEnv is empty in plain OAuth mode", () => {
-  assert.deepEqual(
-    connect.registrationEnv({ key: null, url: DEFAULT_URL }),
-    {}
-  );
+  // registrationEnv passes through an ambient MCP_REMOTE_CONFIG_DIR —
+  // clear it so the assertion holds on machines that export one.
+  const saved = process.env.MCP_REMOTE_CONFIG_DIR;
+  delete process.env.MCP_REMOTE_CONFIG_DIR;
+  try {
+    assert.deepEqual(
+      connect.registrationEnv({ key: null, url: DEFAULT_URL }),
+      {}
+    );
+  } finally {
+    if (saved !== undefined) process.env.MCP_REMOTE_CONFIG_DIR = saved;
+  }
 });
 
 test("registrationEnv carries key and non-default URL", () => {
