@@ -68,7 +68,14 @@ test("rewrites an existing config: backup kept, comments survive", posixOnly, ()
   });
 });
 
-test("an unreadable config fails instead of being replaced", posixOnly, () => {
+// chmod 0o000 does not stop root from reading, so this scenario can't be
+// simulated in root-run CI containers.
+const posixNonRoot =
+  process.platform === "win32" || process.getuid?.() === 0
+    ? { skip: true }
+    : {};
+
+test("an unreadable config fails instead of being replaced", posixNonRoot, () => {
   withTempConfigHome((configPath) => {
     mkdirSync(path.dirname(configPath), { recursive: true });
     writeFileSync(configPath, "GOOSE_PROVIDER: anthropic\n");
