@@ -90,6 +90,10 @@ function runBridge() {
     if (!killTimer) killTimer = killChild(child, 3_000);
   };
 
+  // NOTE: verifyAuth (lib/connect.js) interprets the same mcp-remote
+  // signatures with deliberately different policy — interactive messaging
+  // there, headless timeouts and exit codes here. A change to mcp-remote's
+  // output lands in BOTH.
   const splitter = makeLineSplitter((line) => {
     if (AUTH_FAILURE_RE.test(line)) {
       sawAuthFailure = true;
@@ -177,7 +181,12 @@ if (subcommand === "connect-buzz" || subcommand === "connect") {
       // exitCode, not process.exit(): a piped stderr must drain first.
       process.exitCode = code;
     })
-    .catch((err) => fail(err.message));
+    .catch((err) => {
+      // Not fail() — its inline exit would discard run()'s still-buffered
+      // progress output on a piped stderr.
+      process.stderr.write(`vibewatch-mcp: ${err.message}\n`);
+      process.exitCode = 1;
+    });
 } else {
   runBridge();
 }

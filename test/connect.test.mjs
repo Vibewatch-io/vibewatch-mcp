@@ -150,6 +150,11 @@ test("parseArgs allows http only for localhost", () => {
     () => connect.parseArgs(["--url", "http://example.internal/mcp/"]),
     /only allowed for localhost/
   );
+  // Mirrors mcp-remote's own allowlist, which excludes IPv6 loopback.
+  assert.throws(
+    () => connect.parseArgs(["--url", "http://[::1]:8000/mcp/"]),
+    /only allowed for localhost/
+  );
 });
 
 test("auth-failure regex ignores 401 inside a port number", async () => {

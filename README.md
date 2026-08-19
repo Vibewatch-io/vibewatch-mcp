@@ -22,7 +22,7 @@ Worth knowing:
 - The registration is **user scope**: every session of a configured harness on your machine can query Vibewatch, not just Buzz-spawned ones. The data is read-only community sentiment for your organization.
 - To switch organizations, run `vibewatch-mcp connect-buzz --reset`.
 - After upgrading vibewatch-mcp, run `connect-buzz` once more — the cached sign-in is keyed to the bundled `mcp-remote` version.
-- To undo: `claude mcp remove --scope user vibewatch`, `codex mcp remove vibewatch`, or delete the `extensions.vibewatch` entry from `~/.config/goose/config.yaml`. Revoke the app's access any time from **Settings → API Access**.
+- To undo: `claude mcp remove --scope user vibewatch`, `codex mcp remove vibewatch`, or delete the `extensions.vibewatch` entry from `~/.config/goose/config.yaml` (Windows: `%APPDATA%\Block\goose\config\config.yaml`). Revoke the app's access any time from **Settings → API Access**.
 
 For the full Vibewatch-on-Buzz install — report delivery into a channel plus a ready-made @vibewatch persona — open the **Buzz tile** under **Settings → Reports** in app.vibewatch.io and follow the setup walkthrough.
 
