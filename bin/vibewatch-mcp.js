@@ -54,6 +54,14 @@ const {
 // host with unlimited immediate respawns from hot-spinning on the exit.
 const BRIDGE_SUPPRESSED_EXIT_HOLD_MS = 2_000;
 
+// How long a claim-owning bridge may sit with NEITHER an auth line NOR a
+// connected proxy before it releases the claim while continuing to run. A
+// pre-auth stall (unreachable server, mcp-remote retry loop) opens no tabs,
+// and mcp-remote can hang that way indefinitely — without this bound the
+// stalled owner renews forever and every sibling blocks its whole wait and
+// exits, where before the claim each would have attempted independently.
+const CLAIM_PREAUTH_RELEASE_MS = 60_000;
+
 function writeAuthGuidance(keyMode) {
   process.stderr.write(
     keyMode
@@ -67,9 +75,11 @@ function writeAuthGuidance(keyMode) {
   );
 }
 
-function exitSuppressed(message) {
+function exitSuppressed(message, { guidance = true } = {}) {
   process.stderr.write(message);
-  writeAuthGuidance(false);
+  // The claim-timeout path skips the sign-in guidance: pointing at
+  // connect-buzz there sends the user into the same held claim.
+  if (guidance) writeAuthGuidance(false);
   process.exitCode = 1;
   // Keep the event loop alive briefly so the exit isn't a hot spin for a
   // host with unlimited immediate respawns.
@@ -131,7 +141,8 @@ async function runBridge() {
       exitSuppressed(
         "vibewatch-mcp: another vibewatch-mcp process is still connecting " +
           "or signing in — finish its sign-in if a browser tab is open, " +
-          "or close that process.\n"
+          "or close that process and retry.\n",
+        { guidance: false }
       );
       return;
     } else {
@@ -190,6 +201,24 @@ async function runBridge() {
   // there, headless timeouts and exit codes here. A change to mcp-remote's
   // output lands in BOTH.
   let connected = false;
+  // A claim owner stalled with neither an auth line nor a connected proxy
+  // (see CLAIM_PREAUTH_RELEASE_MS) frees waiting siblings — a pre-auth
+  // stall opens no tabs, so they are safe to try independently. Cleared
+  // the moment an auth phase actually starts: releasing mid-sign-in would
+  // hand a sibling a second tab.
+  let claimPreauthTimer = null;
+  if (claim) {
+    claimPreauthTimer = setTimeout(() => {
+      claim.release();
+    }, CLAIM_PREAUTH_RELEASE_MS);
+    claimPreauthTimer.unref();
+  }
+  const clearClaimPreauthTimer = () => {
+    if (claimPreauthTimer) {
+      clearTimeout(claimPreauthTimer);
+      claimPreauthTimer = null;
+    }
+  };
   // One marker write per auth phase; reset on proxy-up so a mid-session
   // re-auth records its own prompt.
   let markerRecorded = false;
@@ -224,6 +253,7 @@ async function runBridge() {
     // lockfile race would hold the client's stdio session forever.
     if (AUTH_PROMPT_RE.test(line) || AUTH_WAIT_RE.test(line)) {
       connected = false;
+      clearClaimPreauthTimer();
       recordAuthMarker();
       if (keyMode) {
         // A rejected key surfaces as a silent 401 that drops mcp-remote into
@@ -252,6 +282,7 @@ async function runBridge() {
       // waiting siblings may proceed.
       if (!keyMode) {
         markerRecorded = false;
+        clearClaimPreauthTimer();
         clearAuthMarker(serverUrl);
         if (claim) claim.release();
       }

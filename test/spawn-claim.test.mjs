@@ -224,15 +224,17 @@ test("unusable claim storage returns unclaimed, not a crash", async () => {
   }
 });
 
-test("--reset clears a STALE claim but preserves a live one", async () => {
+test("--reset clears a STALE claim (uncounted) but preserves a live one", async () => {
   await withTempCache(() => {
     // Live claim = another process mid-sign-in; deleting it would let this
     // reset open a second tab beside that session's (Codex P2, round 1).
     writeForeignClaim(URL_A);
-    assert.equal(connect.resetCachedAuth(URL_A), 0);
+    connect.resetCachedAuth(URL_A);
     assert.ok(existsSync(claimPath(URL_A)));
     writeForeignClaim(URL_A, { renewedAt: Date.now() - CLAIM_STALE_MS - 1_000 });
-    assert.equal(connect.resetCachedAuth(URL_A), 1);
+    // Removed, but NOT counted: a claim is not a cached sign-in, and
+    // counting it would print "Cleared the cached sign-in" over nothing.
+    assert.equal(connect.resetCachedAuth(URL_A), 0);
     assert.equal(existsSync(claimPath(URL_A)), false);
   });
 });
