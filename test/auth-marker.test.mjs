@@ -16,7 +16,6 @@ import path from "node:path";
 
 const require = createRequire(import.meta.url);
 const {
-  DEFAULT_URL,
   AUTH_MARKER_TTL_MS,
   TOKENS_GRACE_MS,
   authMarkerPath,
@@ -172,20 +171,31 @@ test("oauthSpawnGate: tokens slightly OLDER than the marker still satisfy it", (
   });
 });
 
-test("resetCachedAuth clears the pending-auth marker too", () => {
+test("resetCachedAuth clears the pending-auth marker too, and counts it", () => {
   withTempCache(() => {
     writeAuthMarker(URL_A);
-    connect.resetCachedAuth(URL_A);
+    // In the exact issue-#4 state (marker, no tokens) reset must report
+    // that it cleared something — the suppression really was lifted.
+    assert.equal(connect.resetCachedAuth(URL_A), 1);
     assert.equal(existsSync(authMarkerPath(URL_A)), false);
+    assert.equal(connect.resetCachedAuth(URL_A), 0);
   });
 });
 
+// A non-routable host for bin-level suppression tests: if the gate ever
+// regresses, the bridge must spawn mcp-remote against this — a contained
+// failure — rather than against the production server.
+const BOGUS_URL = "https://vibewatch-test.invalid/mcp/";
+
 test("bridge: suppressed spawn exits 1 with guidance and opens nothing", () => {
   withTempCache((tmp) => {
-    writeAuthMarker(DEFAULT_URL);
-    const env = { ...process.env, MCP_REMOTE_CONFIG_DIR: tmp };
+    writeAuthMarker(BOGUS_URL);
+    const env = {
+      ...process.env,
+      MCP_REMOTE_CONFIG_DIR: tmp,
+      VIBEWATCH_MCP_URL: BOGUS_URL,
+    };
     delete env.VIBEWATCH_MCP_KEY;
-    delete env.VIBEWATCH_MCP_URL;
     const result = spawnSync(process.execPath, [bin], {
       encoding: "utf8",
       env,
@@ -196,7 +206,7 @@ test("bridge: suppressed spawn exits 1 with guidance and opens nothing", () => {
     assert.match(result.stderr, /connect-buzz/);
     // The marker survives the suppressed exit — the NEXT respawn is capped
     // too (clearing it here would alternate tab, skip, tab, skip...).
-    assert.ok(existsSync(authMarkerPath(DEFAULT_URL)));
+    assert.ok(existsSync(authMarkerPath(BOGUS_URL)));
     // mcp-remote was never spawned — none of its startup output appears.
     assert.doesNotMatch(result.stderr, /Proxy established|mcp-remote/i);
   });
@@ -204,15 +214,15 @@ test("bridge: suppressed spawn exits 1 with guidance and opens nothing", () => {
 
 test("bridge: a malformed key downgrades to OAuth mode and hits the cap", () => {
   withTempCache((tmp) => {
-    writeAuthMarker(DEFAULT_URL);
+    writeAuthMarker(BOGUS_URL);
     // A value failing the vw_mcp_ prefix check flips the bridge back to
     // OAuth mode, so the suppression gate must apply there too.
     const env = {
       ...process.env,
       MCP_REMOTE_CONFIG_DIR: tmp,
+      VIBEWATCH_MCP_URL: BOGUS_URL,
       VIBEWATCH_MCP_KEY: "not-a-vibewatch-key",
     };
-    delete env.VIBEWATCH_MCP_URL;
     const result = spawnSync(process.execPath, [bin], {
       encoding: "utf8",
       env,
