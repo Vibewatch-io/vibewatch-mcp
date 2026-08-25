@@ -84,8 +84,16 @@ test("an expired marker reads as absent — the TTL deliberately allows one new 
   });
 });
 
-test("a far-future openedAt (clock jump) also reads as absent", () => {
+test("any future openedAt (clock moved backward) reads as absent", () => {
+  // Tolerating a future marker would extend suppression past the TTL after
+  // a backwards clock jump; rejecting it costs at most one extra prompt,
+  // which rewrites the marker at the current clock.
   withTempCache(() => {
+    writeFileSync(
+      authMarkerPath(URL_A),
+      JSON.stringify({ openedAt: Date.now() + 5_000 })
+    );
+    assert.equal(readFreshAuthMarker(URL_A), null);
     writeFileSync(
       authMarkerPath(URL_A),
       JSON.stringify({ openedAt: Date.now() + AUTH_MARKER_TTL_MS + 1_000 })
