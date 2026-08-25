@@ -11,6 +11,14 @@ if (!process.env.VW_TEST_FAKE_MCP_REMOTE) process.exit(0);
 
 const common = require("../../lib/common.js");
 common.resolveMcpRemoteBin = () => process.env.VW_TEST_FAKE_MCP_REMOTE;
+// VW_TEST_CLAIM=1 forces the win32-only spawn claim on, with test-speed
+// wait/poll timings, so the bridge's claim wiring runs on macOS/Linux CI.
+if (process.env.VW_TEST_CLAIM === "1") {
+  common.spawnClaimEnabled = () => true;
+  const realAcquire = common.acquireSpawnSlot;
+  common.acquireSpawnSlot = (url, opts) =>
+    realAcquire(url, { waitMs: 1_500, pollMs: 50, ...opts });
+}
 // No subcommand, no passthrough args.
 process.argv = process.argv.slice(0, 2);
 require("../../bin/vibewatch-mcp.js");

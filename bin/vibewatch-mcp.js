@@ -126,9 +126,12 @@ async function runBridge() {
       );
       return;
     } else if (slot.status === "timeout") {
+      // Reachable both mid-sign-in and when the owner stalls pre-connect
+      // (unreachable server, retry loop) — name both, don't assume a tab.
       exitSuppressed(
-        "vibewatch-mcp: another vibewatch-mcp process is signing in — " +
-          "finish that sign-in (or close that process) first.\n"
+        "vibewatch-mcp: another vibewatch-mcp process is still connecting " +
+          "or signing in — finish its sign-in if a browser tab is open, " +
+          "or close that process.\n"
       );
       return;
     } else {
