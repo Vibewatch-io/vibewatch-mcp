@@ -313,13 +313,14 @@ async function runBridge() {
     if (killTimer) clearTimeout(killTimer);
     if (claimStallAbort) {
       // We ended the child ourselves; its exit result must not report
-      // success, and the message names the real state (no sign-in was
-      // attempted, so no auth guidance).
+      // success. A 401 seen before the stall means the hang is an auth
+      // retry, not the network — keep the sign-in guidance for that case.
       process.stderr.write(
         "vibewatch-mcp: could not reach the Vibewatch MCP server within " +
           `${CLAIM_PREAUTH_ABORT_MS / 1000}s — check your network; your ` +
           "MCP client (or another waiting session) may retry.\n"
       );
+      if (sawAuthFailure) writeAuthGuidance(keyMode);
       process.exitCode = 1;
       return;
     }
