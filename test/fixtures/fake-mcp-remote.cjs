@@ -11,6 +11,7 @@ const lines = {
   "auth-fail": "Error POSTing to endpoint (HTTP 401): Unauthorized",
 };
 const script = (process.env.VW_TEST_SCRIPT || "").split(",").filter(Boolean);
+const lineDelayMs = Number(process.env.VW_TEST_LINE_DELAY_MS || "100");
 // A typo'd key would otherwise emit the literal line "undefined" and fail
 // the test on an unrelated assertion — abort loudly instead.
 const unknown = script.filter((key) => !(key in lines));
@@ -29,6 +30,6 @@ const tick = () => {
   }
   process.stderr.write(`[${process.pid}] ${lines[script[i]]}\n`);
   i++;
-  setTimeout(tick, 100);
+  setTimeout(tick, lineDelayMs);
 };
-tick();
+setTimeout(tick, lineDelayMs);

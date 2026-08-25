@@ -38,6 +38,7 @@ const {
   // forever. Long enough for a human to approve on an interactive first
   // connect. Lives in lib/common.js so the spawn-claim wait derives from it.
   BRIDGE_AUTH_WAIT_MS,
+  CLAIM_PREAUTH_ABORT_MS,
   acquireSpawnSlot,
   bridgeArgs,
   clearAuthMarker,
@@ -53,14 +54,6 @@ const {
 // non-zero. The marker is the real cap on browser tabs; this only keeps a
 // host with unlimited immediate respawns from hot-spinning on the exit.
 const BRIDGE_SUPPRESSED_EXIT_HOLD_MS = 2_000;
-
-// How long a claim-owning bridge may sit with NEITHER an auth line NOR a
-// connected proxy before it releases the claim while continuing to run. A
-// pre-auth stall (unreachable server, mcp-remote retry loop) opens no tabs,
-// and mcp-remote can hang that way indefinitely — without this bound the
-// stalled owner renews forever and every sibling blocks its whole wait and
-// exits, where before the claim each would have attempted independently.
-const CLAIM_PREAUTH_RELEASE_MS = 60_000;
 
 function writeAuthGuidance(keyMode) {
   process.stderr.write(
@@ -202,15 +195,20 @@ async function runBridge() {
   // output lands in BOTH.
   let connected = false;
   // A claim owner stalled with neither an auth line nor a connected proxy
-  // (see CLAIM_PREAUTH_RELEASE_MS) frees waiting siblings — a pre-auth
-  // stall opens no tabs, so they are safe to try independently. Cleared
-  // the moment an auth phase actually starts: releasing mid-sign-in would
-  // hand a sibling a second tab.
+  // (see CLAIM_PREAUTH_ABORT_MS) EXITS — child killed, claim released on
+  // close — so exactly one session at a time retries against a slow or
+  // unreachable server. It must not merely release and keep running: its
+  // still-attached mcp-remote would prompt unserialized later, and every
+  // accumulated bridge would open a tab the moment the server recovered.
+  // Cleared when an auth phase starts (the owner then legitimately holds
+  // the claim for the sign-in) and on proxy-up.
+  let claimStallAbort = false;
   let claimPreauthTimer = null;
   if (claim) {
     claimPreauthTimer = setTimeout(() => {
-      claim.release();
-    }, CLAIM_PREAUTH_RELEASE_MS);
+      claimStallAbort = true;
+      endChild("SIGINT");
+    }, CLAIM_PREAUTH_ABORT_MS);
     claimPreauthTimer.unref();
   }
   const clearClaimPreauthTimer = () => {
@@ -310,8 +308,21 @@ async function runBridge() {
   child.on("close", (code, signal) => {
     splitter.flush();
     if (claim) claim.release();
+    clearClaimPreauthTimer();
     if (authTimer) clearTimeout(authTimer);
     if (killTimer) clearTimeout(killTimer);
+    if (claimStallAbort) {
+      // We ended the child ourselves; its exit result must not report
+      // success, and the message names the real state (no sign-in was
+      // attempted, so no auth guidance).
+      process.stderr.write(
+        "vibewatch-mcp: could not reach the Vibewatch MCP server within " +
+          `${CLAIM_PREAUTH_ABORT_MS / 1000}s while other sessions waited — ` +
+          "exiting so another session can try.\n"
+      );
+      process.exitCode = 1;
+      return;
+    }
     if (authAbort) {
       // We ended the session over auth; the child's own exit code (often 0,
       // from its SIGINT handler) must not report success.

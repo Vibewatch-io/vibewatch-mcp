@@ -18,6 +18,10 @@ if (process.env.VW_TEST_CLAIM === "1") {
   const realAcquire = common.acquireSpawnSlot;
   common.acquireSpawnSlot = (url, opts) =>
     realAcquire(url, { waitMs: 1_500, pollMs: 50, ...opts });
+  if (process.env.VW_TEST_PREAUTH_ABORT_MS) {
+    // Mutating the export before the bin destructures it below.
+    common.CLAIM_PREAUTH_ABORT_MS = Number(process.env.VW_TEST_PREAUTH_ABORT_MS);
+  }
 }
 // No subcommand, no passthrough args.
 process.argv = process.argv.slice(0, 2);

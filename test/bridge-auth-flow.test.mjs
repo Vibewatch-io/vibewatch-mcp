@@ -110,6 +110,29 @@ test("claim-enabled bridge: acquires, connects, and releases the claim", () => {
   }
 });
 
+test("claim-enabled bridge: a pre-auth stall aborts, exits 1, and frees the claim", () => {
+  // The confirm-leg P1: the owner must EXIT on a pre-auth stall (child
+  // killed, claim released), never release-and-keep-running — accumulated
+  // running bridges would all prompt at once when the server recovered.
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "vw-mcp-bridge-"));
+  const result = runBridge(tmp, "proxy-up", {
+    VW_TEST_CLAIM: "1",
+    VW_TEST_PREAUTH_ABORT_MS: "300",
+    VW_TEST_LINE_DELAY_MS: "2000", // first output far after the abort bound
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /could not reach the Vibewatch MCP server/);
+  const { claimPath } = require("../lib/common.js");
+  const saved = process.env.MCP_REMOTE_CONFIG_DIR;
+  process.env.MCP_REMOTE_CONFIG_DIR = tmp;
+  try {
+    assert.equal(existsSync(claimPath(DEFAULT_URL)), false);
+  } finally {
+    if (saved === undefined) delete process.env.MCP_REMOTE_CONFIG_DIR;
+    else process.env.MCP_REMOTE_CONFIG_DIR = saved;
+  }
+});
+
 test("claim-enabled bridge: a live foreign claim makes it wait, then exit named", () => {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "vw-mcp-bridge-"));
   const { claimPath } = require("../lib/common.js");
