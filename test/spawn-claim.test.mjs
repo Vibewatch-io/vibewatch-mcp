@@ -180,7 +180,12 @@ test("post-acquire gate recheck: an unanswered marker on a free path suppresses 
 
 test("renewal advances renewedAt; takeover flips lostOwnership and disarms release", async () => {
   await withTempCache(async () => {
-    const slot = await acquireSpawnSlot(URL_A, { ...FAST, renewMs: 40 });
+    let lostCalls = 0;
+    const slot = await acquireSpawnSlot(URL_A, {
+      ...FAST,
+      renewMs: 40,
+      onLost: () => lostCalls++,
+    });
     assert.equal(slot.status, "acquired");
     const first = JSON.parse(readFileSync(claimPath(URL_A), "utf8"));
     await new Promise((r) => setTimeout(r, 120));
@@ -190,6 +195,9 @@ test("renewal advances renewedAt; takeover flips lostOwnership and disarms relea
     writeForeignClaim(URL_A, { ownerId: "444-dddd00000000" });
     await new Promise((r) => setTimeout(r, 120));
     assert.equal(slot.lostOwnership(), true);
+    // The loss callback fires exactly once — the bridge uses it to kill
+    // its child before it can prompt beside the successor.
+    assert.equal(lostCalls, 1);
     slot.release();
     assert.ok(existsSync(claimPath(URL_A)), "release must not rm the new owner's claim");
   });

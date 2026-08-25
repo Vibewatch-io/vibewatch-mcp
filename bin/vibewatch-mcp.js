@@ -116,8 +116,14 @@ async function runBridge() {
   // #6, Windows): concurrently launched bridges wait for the owner instead
   // of racing it to a second browser tab.
   let claim = null;
+  // Rebound after the child spawns: a claim lost to takeover (this process
+  // was suspended past staleness) must kill the child before it can reach
+  // the auth phase beside the successor and open a second tab.
+  let onClaimLost = () => {};
   if (!keyMode && spawnClaimEnabled()) {
-    const slot = await acquireSpawnSlot(serverUrl);
+    const slot = await acquireSpawnSlot(serverUrl, {
+      onLost: () => onClaimLost(),
+    });
     if (slot.status === "acquired") {
       claim = slot;
     } else if (slot.status === "satisfied") {
@@ -203,6 +209,7 @@ async function runBridge() {
   // Cleared when an auth phase starts (the owner then legitimately holds
   // the claim for the sign-in) and on proxy-up.
   let claimStallAbort = false;
+  let claimLostAbort = false;
   let claimPreauthTimer = null;
   if (claim) {
     claimPreauthTimer = setTimeout(() => {
@@ -210,6 +217,10 @@ async function runBridge() {
       endChild("SIGINT");
     }, CLAIM_PREAUTH_ABORT_MS);
     claimPreauthTimer.unref();
+    onClaimLost = () => {
+      claimLostAbort = true;
+      endChild("SIGINT");
+    };
   }
   const clearClaimPreauthTimer = () => {
     if (claimPreauthTimer) {
@@ -321,6 +332,17 @@ async function runBridge() {
           "MCP client (or another waiting session) may retry.\n"
       );
       if (sawAuthFailure) writeAuthGuidance(keyMode);
+      process.exitCode = 1;
+      return;
+    }
+    if (claimLostAbort) {
+      // This process was suspended long enough for another session to take
+      // over its claim; the successor owns the sign-in now.
+      process.stderr.write(
+        "vibewatch-mcp: another vibewatch-mcp session took over the " +
+          "sign-in after this one stalled — exiting; it will complete " +
+          "the connection.\n"
+      );
       process.exitCode = 1;
       return;
     }
