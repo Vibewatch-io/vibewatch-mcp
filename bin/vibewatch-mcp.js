@@ -31,21 +31,24 @@ const {
   AUTH_PROMPT_RE,
   AUTH_WAIT_RE,
   PROXY_UP_RE,
+  // How long the bridge waits for a browser sign-in after mcp-remote prints
+  // the authorization prompt. mcp-remote itself never times this wait out
+  // (its --auth-timeout only bounds a secondary-instance long poll), so
+  // without this timer a headless host with no cached sign-in would hang
+  // forever. Long enough for a human to approve on an interactive first
+  // connect. Lives in lib/common.js so the spawn-claim wait derives from it.
+  BRIDGE_AUTH_WAIT_MS,
+  CLAIM_PREAUTH_ABORT_MS,
+  acquireSpawnSlot,
   bridgeArgs,
   clearAuthMarker,
   makeLineSplitter,
   oauthSpawnGate,
   resolveMcpRemoteBin,
+  spawnClaimEnabled,
   writeAuthMarker,
   fail,
 } = require("../lib/common.js");
-
-// How long the bridge waits for a browser sign-in after mcp-remote prints the
-// authorization prompt. mcp-remote itself never times this wait out (its
-// --auth-timeout only bounds a secondary-instance long poll), so without this
-// timer a headless host with no cached sign-in would hang forever. Long
-// enough for a human to approve on an interactive first connect.
-const BRIDGE_AUTH_WAIT_MS = 180_000;
 
 // How long a suppressed spawn (see oauthSpawnGate) lingers before exiting
 // non-zero. The marker is the real cap on browser tabs; this only keeps a
@@ -65,7 +68,18 @@ function writeAuthGuidance(keyMode) {
   );
 }
 
-function runBridge() {
+function exitSuppressed(message, { guidance = true } = {}) {
+  process.stderr.write(message);
+  // The claim-timeout path skips the sign-in guidance: pointing at
+  // connect-buzz there sends the user into the same held claim.
+  if (guidance) writeAuthGuidance(false);
+  process.exitCode = 1;
+  // Keep the event loop alive briefly so the exit isn't a hot spin for a
+  // host with unlimited immediate respawns.
+  setTimeout(() => {}, BRIDGE_SUPPRESSED_EXIT_HOLD_MS);
+}
+
+async function runBridge() {
   // Mirror connect-buzz's env-key leniency: a stale non-Vibewatch value
   // (keys always start with vw_mcp_) must not flip a configured OAuth
   // bridge into key mode with a garbage bearer token.
@@ -90,16 +104,53 @@ function runBridge() {
     if (gate === "satisfied") {
       clearAuthMarker(serverUrl);
     } else if (gate === "suppress") {
-      process.stderr.write(
+      exitSuppressed(
         "vibewatch-mcp: a Vibewatch sign-in tab was already opened and " +
           "never completed — not opening another one.\n"
       );
-      writeAuthGuidance(false);
-      process.exitCode = 1;
-      // Keep the event loop alive briefly so the exit isn't a hot spin for
-      // the respawning host, then let the process end naturally.
-      setTimeout(() => {}, BRIDGE_SUPPRESSED_EXIT_HOLD_MS);
       return;
+    }
+  }
+
+  // Single-owner spawning where mcp-remote has no lock of its own (issue
+  // #6, Windows): concurrently launched bridges wait for the owner instead
+  // of racing it to a second browser tab.
+  let claim = null;
+  // Rebound after the child spawns: a claim lost to takeover (this process
+  // was suspended past staleness) must kill the child before it can reach
+  // the auth phase beside the successor and open a second tab.
+  let onClaimLost = () => {};
+  if (!keyMode && spawnClaimEnabled()) {
+    const slot = await acquireSpawnSlot(serverUrl, {
+      onLost: () => onClaimLost(),
+    });
+    if (slot.status === "acquired") {
+      claim = slot;
+    } else if (slot.status === "satisfied") {
+      clearAuthMarker(serverUrl);
+    } else if (slot.status === "suppress") {
+      exitSuppressed(
+        "vibewatch-mcp: another vibewatch-mcp process opened the sign-in " +
+          "tab and it was never completed — not opening another one.\n"
+      );
+      return;
+    } else if (slot.status === "timeout") {
+      // Reachable both mid-sign-in and when the owner stalls pre-connect
+      // (unreachable server, retry loop) — name both, don't assume a tab.
+      exitSuppressed(
+        "vibewatch-mcp: another vibewatch-mcp process is still connecting " +
+          "or signing in — finish its sign-in if a browser tab is open, " +
+          "or close that process and retry.\n",
+        { guidance: false }
+      );
+      return;
+    } else {
+      // "unclaimed": claim storage is unusable — proceed (the marker still
+      // caps sequential respawns) but say the concurrency guard is off.
+      process.stderr.write(
+        `vibewatch-mcp: could not record the sign-in claim (${slot.reason}) ` +
+          "— concurrent sessions may each open a sign-in tab.\n"
+      );
     }
   }
 
@@ -107,6 +158,7 @@ function runBridge() {
   try {
     mcpRemoteBin = resolveMcpRemoteBin();
   } catch (err) {
+    if (claim) claim.release();
     // Nothing has been written yet, so fail()'s inline exit is safe here.
     fail(err.message);
   }
@@ -148,6 +200,34 @@ function runBridge() {
   // there, headless timeouts and exit codes here. A change to mcp-remote's
   // output lands in BOTH.
   let connected = false;
+  // A claim owner stalled with neither an auth line nor a connected proxy
+  // (see CLAIM_PREAUTH_ABORT_MS) EXITS — child killed, claim released on
+  // close — so exactly one session at a time retries against a slow or
+  // unreachable server. It must not merely release and keep running: its
+  // still-attached mcp-remote would prompt unserialized later, and every
+  // accumulated bridge would open a tab the moment the server recovered.
+  // Cleared when an auth phase starts (the owner then legitimately holds
+  // the claim for the sign-in) and on proxy-up.
+  let claimStallAbort = false;
+  let claimLostAbort = false;
+  let claimPreauthTimer = null;
+  if (claim) {
+    claimPreauthTimer = setTimeout(() => {
+      claimStallAbort = true;
+      endChild("SIGINT");
+    }, CLAIM_PREAUTH_ABORT_MS);
+    claimPreauthTimer.unref();
+    onClaimLost = () => {
+      claimLostAbort = true;
+      endChild("SIGINT");
+    };
+  }
+  const clearClaimPreauthTimer = () => {
+    if (claimPreauthTimer) {
+      clearTimeout(claimPreauthTimer);
+      claimPreauthTimer = null;
+    }
+  };
   // One marker write per auth phase; reset on proxy-up so a mid-session
   // re-auth records its own prompt.
   let markerRecorded = false;
@@ -182,6 +262,7 @@ function runBridge() {
     // lockfile race would hold the client's stdio session forever.
     if (AUTH_PROMPT_RE.test(line) || AUTH_WAIT_RE.test(line)) {
       connected = false;
+      clearClaimPreauthTimer();
       recordAuthMarker();
       if (keyMode) {
         // A rejected key surfaces as a silent 401 that drops mcp-remote into
@@ -205,10 +286,14 @@ function runBridge() {
       sawAuthFailure = false;
       // The auth phase (if any) completed — lift the one-prompt cap
       // (including a leftover expired marker file) and re-arm for a
-      // possible mid-session re-auth.
+      // possible mid-session re-auth. The spawn claim is released here
+      // too: once connected this process holds no browser-tab risk, and
+      // waiting siblings may proceed.
       if (!keyMode) {
         markerRecorded = false;
+        clearClaimPreauthTimer();
         clearAuthMarker(serverUrl);
+        if (claim) claim.release();
       }
     }
   });
@@ -233,8 +318,34 @@ function runBridge() {
   // process.exit(), so our own piped stderr drains before termination.
   child.on("close", (code, signal) => {
     splitter.flush();
+    if (claim) claim.release();
+    clearClaimPreauthTimer();
     if (authTimer) clearTimeout(authTimer);
     if (killTimer) clearTimeout(killTimer);
+    if (claimStallAbort) {
+      // We ended the child ourselves; its exit result must not report
+      // success. A 401 seen before the stall means the hang is an auth
+      // retry, not the network — keep the sign-in guidance for that case.
+      process.stderr.write(
+        "vibewatch-mcp: could not reach the Vibewatch MCP server within " +
+          `${CLAIM_PREAUTH_ABORT_MS / 1000}s — check your network; your ` +
+          "MCP client (or another waiting session) may retry.\n"
+      );
+      if (sawAuthFailure) writeAuthGuidance(keyMode);
+      process.exitCode = 1;
+      return;
+    }
+    if (claimLostAbort) {
+      // This process was suspended long enough for another session to take
+      // over its claim; the successor owns the sign-in now.
+      process.stderr.write(
+        "vibewatch-mcp: another vibewatch-mcp session took over the " +
+          "sign-in after this one stalled — exiting; it will complete " +
+          "the connection.\n"
+      );
+      process.exitCode = 1;
+      return;
+    }
     if (authAbort) {
       // We ended the session over auth; the child's own exit code (often 0,
       // from its SIGINT handler) must not report success.
@@ -257,6 +368,7 @@ function runBridge() {
   });
 
   child.on("error", (err) => {
+    if (claim) claim.release();
     fail(`failed to start mcp-remote: ${err.message}`);
   });
 }
@@ -276,5 +388,9 @@ if (subcommand === "connect-buzz" || subcommand === "connect") {
       process.exitCode = 1;
     });
 } else {
-  runBridge();
+  runBridge().catch((err) => {
+    // Not fail() — piped stderr output already written must drain first.
+    process.stderr.write(`vibewatch-mcp: ${err.message}\n`);
+    process.exitCode = 1;
+  });
 }

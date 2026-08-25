@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
 import path from "node:path";
@@ -91,4 +91,67 @@ test("bridge auth-failure exit still prints guidance (regression)", () => {
   const result = runBridge(tmp, "auth-fail", { VW_TEST_EXIT: "1" });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /not signed in|connect-buzz/);
+});
+
+// --- claim wiring (forced on via VW_TEST_CLAIM; win32-only in production) ---
+
+test("claim-enabled bridge: acquires, connects, and releases the claim", () => {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "vw-mcp-bridge-"));
+  const result = runBridge(tmp, "prompt,proxy-up", { VW_TEST_CLAIM: "1" });
+  assert.equal(result.status, 0);
+  const { claimPath } = require("../lib/common.js");
+  const saved = process.env.MCP_REMOTE_CONFIG_DIR;
+  process.env.MCP_REMOTE_CONFIG_DIR = tmp;
+  try {
+    assert.equal(existsSync(claimPath(DEFAULT_URL)), false);
+  } finally {
+    if (saved === undefined) delete process.env.MCP_REMOTE_CONFIG_DIR;
+    else process.env.MCP_REMOTE_CONFIG_DIR = saved;
+  }
+});
+
+test("claim-enabled bridge: a pre-auth stall aborts, exits 1, and frees the claim", () => {
+  // The confirm-leg P1: the owner must EXIT on a pre-auth stall (child
+  // killed, claim released), never release-and-keep-running — accumulated
+  // running bridges would all prompt at once when the server recovered.
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "vw-mcp-bridge-"));
+  const result = runBridge(tmp, "proxy-up", {
+    VW_TEST_CLAIM: "1",
+    VW_TEST_PREAUTH_ABORT_MS: "300",
+    VW_TEST_LINE_DELAY_MS: "2000", // first output far after the abort bound
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /could not reach the Vibewatch MCP server/);
+  const { claimPath } = require("../lib/common.js");
+  const saved = process.env.MCP_REMOTE_CONFIG_DIR;
+  process.env.MCP_REMOTE_CONFIG_DIR = tmp;
+  try {
+    assert.equal(existsSync(claimPath(DEFAULT_URL)), false);
+  } finally {
+    if (saved === undefined) delete process.env.MCP_REMOTE_CONFIG_DIR;
+    else process.env.MCP_REMOTE_CONFIG_DIR = saved;
+  }
+});
+
+test("claim-enabled bridge: a live foreign claim makes it wait, then exit named", () => {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "vw-mcp-bridge-"));
+  const { claimPath } = require("../lib/common.js");
+  const saved = process.env.MCP_REMOTE_CONFIG_DIR;
+  process.env.MCP_REMOTE_CONFIG_DIR = tmp;
+  try {
+    writeFileSync(
+      claimPath(DEFAULT_URL),
+      JSON.stringify({
+        ownerId: "999-feedface0000",
+        claimedAt: Date.now(),
+        renewedAt: Date.now(),
+      })
+    );
+  } finally {
+    if (saved === undefined) delete process.env.MCP_REMOTE_CONFIG_DIR;
+    else process.env.MCP_REMOTE_CONFIG_DIR = saved;
+  }
+  const result = runBridge(tmp, "proxy-up", { VW_TEST_CLAIM: "1" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /still connecting or signing in/);
 });
