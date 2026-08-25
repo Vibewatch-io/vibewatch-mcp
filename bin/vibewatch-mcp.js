@@ -31,21 +31,23 @@ const {
   AUTH_PROMPT_RE,
   AUTH_WAIT_RE,
   PROXY_UP_RE,
+  // How long the bridge waits for a browser sign-in after mcp-remote prints
+  // the authorization prompt. mcp-remote itself never times this wait out
+  // (its --auth-timeout only bounds a secondary-instance long poll), so
+  // without this timer a headless host with no cached sign-in would hang
+  // forever. Long enough for a human to approve on an interactive first
+  // connect. Lives in lib/common.js so the spawn-claim wait derives from it.
+  BRIDGE_AUTH_WAIT_MS,
+  acquireSpawnSlot,
   bridgeArgs,
   clearAuthMarker,
   makeLineSplitter,
   oauthSpawnGate,
   resolveMcpRemoteBin,
+  spawnClaimEnabled,
   writeAuthMarker,
   fail,
 } = require("../lib/common.js");
-
-// How long the bridge waits for a browser sign-in after mcp-remote prints the
-// authorization prompt. mcp-remote itself never times this wait out (its
-// --auth-timeout only bounds a secondary-instance long poll), so without this
-// timer a headless host with no cached sign-in would hang forever. Long
-// enough for a human to approve on an interactive first connect.
-const BRIDGE_AUTH_WAIT_MS = 180_000;
 
 // How long a suppressed spawn (see oauthSpawnGate) lingers before exiting
 // non-zero. The marker is the real cap on browser tabs; this only keeps a
@@ -65,7 +67,16 @@ function writeAuthGuidance(keyMode) {
   );
 }
 
-function runBridge() {
+function exitSuppressed(message) {
+  process.stderr.write(message);
+  writeAuthGuidance(false);
+  process.exitCode = 1;
+  // Keep the event loop alive briefly so the exit isn't a hot spin for a
+  // host with unlimited immediate respawns.
+  setTimeout(() => {}, BRIDGE_SUPPRESSED_EXIT_HOLD_MS);
+}
+
+async function runBridge() {
   // Mirror connect-buzz's env-key leniency: a stale non-Vibewatch value
   // (keys always start with vw_mcp_) must not flip a configured OAuth
   // bridge into key mode with a garbage bearer token.
@@ -90,16 +101,43 @@ function runBridge() {
     if (gate === "satisfied") {
       clearAuthMarker(serverUrl);
     } else if (gate === "suppress") {
-      process.stderr.write(
+      exitSuppressed(
         "vibewatch-mcp: a Vibewatch sign-in tab was already opened and " +
           "never completed — not opening another one.\n"
       );
-      writeAuthGuidance(false);
-      process.exitCode = 1;
-      // Keep the event loop alive briefly so the exit isn't a hot spin for
-      // the respawning host, then let the process end naturally.
-      setTimeout(() => {}, BRIDGE_SUPPRESSED_EXIT_HOLD_MS);
       return;
+    }
+  }
+
+  // Single-owner spawning where mcp-remote has no lock of its own (issue
+  // #6, Windows): concurrently launched bridges wait for the owner instead
+  // of racing it to a second browser tab.
+  let claim = null;
+  if (!keyMode && spawnClaimEnabled()) {
+    const slot = await acquireSpawnSlot(serverUrl);
+    if (slot.status === "acquired") {
+      claim = slot;
+    } else if (slot.status === "satisfied") {
+      clearAuthMarker(serverUrl);
+    } else if (slot.status === "suppress") {
+      exitSuppressed(
+        "vibewatch-mcp: another vibewatch-mcp process opened the sign-in " +
+          "tab and it was never completed — not opening another one.\n"
+      );
+      return;
+    } else if (slot.status === "timeout") {
+      exitSuppressed(
+        "vibewatch-mcp: another vibewatch-mcp process is signing in — " +
+          "finish that sign-in (or close that process) first.\n"
+      );
+      return;
+    } else {
+      // "unclaimed": claim storage is unusable — proceed (the marker still
+      // caps sequential respawns) but say the concurrency guard is off.
+      process.stderr.write(
+        `vibewatch-mcp: could not record the sign-in claim (${slot.reason}) ` +
+          "— concurrent sessions may each open a sign-in tab.\n"
+      );
     }
   }
 
@@ -107,6 +145,7 @@ function runBridge() {
   try {
     mcpRemoteBin = resolveMcpRemoteBin();
   } catch (err) {
+    if (claim) claim.release();
     // Nothing has been written yet, so fail()'s inline exit is safe here.
     fail(err.message);
   }
@@ -205,10 +244,13 @@ function runBridge() {
       sawAuthFailure = false;
       // The auth phase (if any) completed — lift the one-prompt cap
       // (including a leftover expired marker file) and re-arm for a
-      // possible mid-session re-auth.
+      // possible mid-session re-auth. The spawn claim is released here
+      // too: once connected this process holds no browser-tab risk, and
+      // waiting siblings may proceed.
       if (!keyMode) {
         markerRecorded = false;
         clearAuthMarker(serverUrl);
+        if (claim) claim.release();
       }
     }
   });
@@ -233,6 +275,7 @@ function runBridge() {
   // process.exit(), so our own piped stderr drains before termination.
   child.on("close", (code, signal) => {
     splitter.flush();
+    if (claim) claim.release();
     if (authTimer) clearTimeout(authTimer);
     if (killTimer) clearTimeout(killTimer);
     if (authAbort) {
@@ -257,6 +300,7 @@ function runBridge() {
   });
 
   child.on("error", (err) => {
+    if (claim) claim.release();
     fail(`failed to start mcp-remote: ${err.message}`);
   });
 }
@@ -276,5 +320,9 @@ if (subcommand === "connect-buzz" || subcommand === "connect") {
       process.exitCode = 1;
     });
 } else {
-  runBridge();
+  runBridge().catch((err) => {
+    // Not fail() — piped stderr output already written must drain first.
+    process.stderr.write(`vibewatch-mcp: ${err.message}\n`);
+    process.exitCode = 1;
+  });
 }
