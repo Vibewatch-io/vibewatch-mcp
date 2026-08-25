@@ -1,6 +1,6 @@
 {
   "name": "vibewatch-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Connect any MCP client to your Vibewatch community-sentiment data. One-command Buzz setup with browser sign-in, wrapping mcp-remote with the Vibewatch server URL and auth handling built in.",
   "license": "Apache-2.0",
   "repository": {
