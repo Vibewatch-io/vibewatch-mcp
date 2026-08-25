@@ -32,8 +32,11 @@ const {
   AUTH_WAIT_RE,
   PROXY_UP_RE,
   bridgeArgs,
+  clearAuthMarker,
   makeLineSplitter,
+  oauthSpawnGate,
   resolveMcpRemoteBin,
+  writeAuthMarker,
   fail,
 } = require("../lib/common.js");
 
@@ -43,6 +46,11 @@ const {
 // timer a headless host with no cached sign-in would hang forever. Long
 // enough for a human to approve on an interactive first connect.
 const BRIDGE_AUTH_WAIT_MS = 180_000;
+
+// How long a suppressed spawn (see oauthSpawnGate) lingers before exiting
+// non-zero. The marker is the real cap on browser tabs; this only keeps a
+// host with unlimited immediate respawns from hot-spinning on the exit.
+const BRIDGE_SUPPRESSED_EXIT_HOLD_MS = 2_000;
 
 function writeAuthGuidance(keyMode) {
   process.stderr.write(
@@ -71,6 +79,30 @@ function runBridge() {
     keyMode = false;
   }
   const serverUrl = process.env.VIBEWATCH_MCP_URL || DEFAULT_URL;
+
+  // One browser prompt per missing sign-in (issue #4): if a previous bridge
+  // already opened the authorize tab and nobody completed it, don't spawn
+  // mcp-remote again (each spawn opens another tab) — point at connect-buzz
+  // and exit. A sign-in that landed since (tokens newer than the marker)
+  // lifts the suppression.
+  if (!keyMode) {
+    const gate = oauthSpawnGate(serverUrl);
+    if (gate === "satisfied") {
+      clearAuthMarker(serverUrl);
+    } else if (gate === "suppress") {
+      process.stderr.write(
+        "vibewatch-mcp: a Vibewatch sign-in tab was already opened and " +
+          "never completed — not opening another one.\n"
+      );
+      writeAuthGuidance(false);
+      process.exitCode = 1;
+      // Keep the event loop alive briefly so the exit isn't a hot spin for
+      // the respawning host, then let the process end naturally.
+      setTimeout(() => {}, BRIDGE_SUPPRESSED_EXIT_HOLD_MS);
+      return;
+    }
+  }
+
   let mcpRemoteBin;
   try {
     mcpRemoteBin = resolveMcpRemoteBin();
@@ -116,6 +148,24 @@ function runBridge() {
   // there, headless timeouts and exit codes here. A change to mcp-remote's
   // output lands in BOTH.
   let connected = false;
+  // One marker write per auth phase; reset on proxy-up so a mid-session
+  // re-auth records its own prompt.
+  let markerRecorded = false;
+  const recordAuthMarker = () => {
+    if (keyMode || markerRecorded) return;
+    markerRecorded = true;
+    try {
+      writeAuthMarker(serverUrl);
+    } catch (err) {
+      // Named diagnostic, not a silent fallback: with no marker on disk,
+      // every host respawn will prompt again (the pre-#4 tab storm).
+      process.stderr.write(
+        "vibewatch-mcp: could not record the sign-in prompt " +
+          `(${err.message}) — repeated host restarts may re-open the ` +
+          "browser tab until you run `vibewatch-mcp connect-buzz`.\n"
+      );
+    }
+  };
   const splitter = makeLineSplitter((line) => {
     // Failure signatures only count before the proxy is up — a transient
     // 401 around a token refresh must not turn a later unrelated exit into
@@ -132,6 +182,7 @@ function runBridge() {
     // lockfile race would hold the client's stdio session forever.
     if (AUTH_PROMPT_RE.test(line) || AUTH_WAIT_RE.test(line)) {
       connected = false;
+      recordAuthMarker();
       if (keyMode) {
         // A rejected key surfaces as a silent 401 that drops mcp-remote into
         // its interactive OAuth fallback — never right for a key user. Bail
@@ -152,6 +203,13 @@ function runBridge() {
       }
       connected = true;
       sawAuthFailure = false;
+      // The auth phase (if any) completed — lift the one-prompt cap
+      // (including a leftover expired marker file) and re-arm for a
+      // possible mid-session re-auth.
+      if (!keyMode) {
+        markerRecorded = false;
+        clearAuthMarker(serverUrl);
+      }
     }
   });
 
