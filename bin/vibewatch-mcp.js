@@ -317,8 +317,8 @@ async function runBridge() {
       // attempted, so no auth guidance).
       process.stderr.write(
         "vibewatch-mcp: could not reach the Vibewatch MCP server within " +
-          `${CLAIM_PREAUTH_ABORT_MS / 1000}s while other sessions waited — ` +
-          "exiting so another session can try.\n"
+          `${CLAIM_PREAUTH_ABORT_MS / 1000}s — check your network; your ` +
+          "MCP client (or another waiting session) may retry.\n"
       );
       process.exitCode = 1;
       return;
