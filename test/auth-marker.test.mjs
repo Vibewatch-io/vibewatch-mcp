@@ -18,6 +18,7 @@ const require = createRequire(import.meta.url);
 const {
   DEFAULT_URL,
   AUTH_MARKER_TTL_MS,
+  TOKENS_GRACE_MS,
   authMarkerPath,
   clearAuthMarker,
   newerTokensExist,
@@ -144,15 +145,29 @@ test("newerTokensExist is false on a missing cache base", () => {
 test("oauthSpawnGate: fresh marker suppresses; stale tokens do NOT lift it", () => {
   // The adversarial-review high finding: mere token-file existence (old
   // version, revoked, corrupt) must not bypass the cap — only a sign-in
-  // that completed AFTER the prompt opened may.
+  // that completed around or after the prompt opened may.
   withTempCache((tmp) => {
     assert.equal(oauthSpawnGate(URL_A), "clear");
     writeAuthMarker(URL_A);
     assert.equal(oauthSpawnGate(URL_A), "suppress");
     const { openedAt } = readFreshAuthMarker(URL_A);
-    writeTokens(tmp, URL_A, "mcp-remote-0.1.37", openedAt - 60_000);
+    writeTokens(tmp, URL_A, "mcp-remote-0.1.37", openedAt - TOKENS_GRACE_MS * 2);
     assert.equal(oauthSpawnGate(URL_A), "suppress");
     writeTokens(tmp, URL_A, "mcp-remote-0.1.38", openedAt + 60_000);
+    assert.equal(oauthSpawnGate(URL_A), "satisfied");
+  });
+});
+
+test("oauthSpawnGate: tokens slightly OLDER than the marker still satisfy it", () => {
+  // A bridge that lost the sign-in lockfile race writes its marker moments
+  // after the winner's tokens landed (its shared-auth wait never completes
+  // in the pinned mcp-remote) — without the grace window that ordering
+  // would suppress a correctly signed-in user for the whole TTL. Coarse
+  // (1s) filesystem mtimes have the same shape.
+  withTempCache((tmp) => {
+    writeAuthMarker(URL_A);
+    const { openedAt } = readFreshAuthMarker(URL_A);
+    writeTokens(tmp, URL_A, "mcp-remote-0.1.38", openedAt - TOKENS_GRACE_MS / 2);
     assert.equal(oauthSpawnGate(URL_A), "satisfied");
   });
 });
