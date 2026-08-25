@@ -11,6 +11,16 @@ const lines = {
   "auth-fail": "Error POSTing to endpoint (HTTP 401): Unauthorized",
 };
 const script = (process.env.VW_TEST_SCRIPT || "").split(",").filter(Boolean);
+// A typo'd key would otherwise emit the literal line "undefined" and fail
+// the test on an unrelated assertion — abort loudly instead.
+const unknown = script.filter((key) => !(key in lines));
+if (unknown.length > 0) {
+  process.stderr.write(
+    `fake-mcp-remote: unknown VW_TEST_SCRIPT key(s) ${unknown.join(", ")} — ` +
+      `valid keys: ${Object.keys(lines).join(", ")}\n`
+  );
+  process.exit(2);
+}
 const exitCode = Number(process.env.VW_TEST_EXIT || "0");
 let i = 0;
 const tick = () => {
