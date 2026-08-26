@@ -5,7 +5,11 @@
 // short delay between lines (the bridge's matcher is line-buffered and
 // order-sensitive), then exits 0.
 const lines = {
-  prompt: "Please authorize this client by visiting: https://example.test/x",
+  // Two lines, like the real mcp-remote: the prompt sentence, then the URL
+  // on its own line (the bridge's URL capture must not assume same-line).
+  prompt:
+    "Please authorize this client by visiting:\n" +
+    "https://example.test/authorize?request_id=fixture&client_id=abc",
   wait: "Authentication required. Waiting for authorization...",
   "proxy-up": "Proxy established successfully between local STDIO and remote",
   "auth-fail": "Error POSTing to endpoint (HTTP 401): Unauthorized",

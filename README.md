@@ -55,7 +55,7 @@ Generic client config (Claude Desktop and compatible). GUI apps on macOS start w
 
 With no `VIBEWATCH_MCP_KEY` set, the bridge uses the cached browser sign-in (run `connect-buzz` once to create it — or the client's first connection opens the sign-in page itself). Add an `env` block with `VIBEWATCH_MCP_KEY` to use a key instead.
 
-If that first sign-in page is never completed, the bridge won't open another one: later spawns (a client restarting the server, other agent sessions) exit with a pointer to `vibewatch-mcp connect-buzz` instead of opening more tabs. Sign in via `connect-buzz` (or complete the open tab) to clear it; after 24 hours an unanswered prompt expires and one fresh sign-in page is allowed again. On Windows, agent sessions launched at the same time also coordinate so only one of them opens the sign-in page — the others wait for it to finish.
+The bridge owns sign-in tabs: `mcp-remote`'s own browser auto-open is disabled under the bridge, and the bridge opens the sign-in page itself — at most one tab machine-wide per sign-in, however many agent sessions are running. That covers mid-session re-auth too (a revoked or expired sign-in with many live sessions opens one tab, not one per session). If a sign-in page is never completed, the bridge won't open another one: later spawns (a client restarting the server, other agent sessions) exit with a pointer to `vibewatch-mcp connect-buzz` instead of opening more tabs. Sign in via `connect-buzz` (or complete the open tab) to clear it; after 24 hours an unanswered prompt expires and one fresh sign-in page is allowed again. On Windows, agent sessions launched at the same time also coordinate so only one of them opens the sign-in page — the others wait for it to finish.
 
 ## Environment variables
 
@@ -63,6 +63,7 @@ If that first sign-in page is never completed, the bridge won't open another one
 |---|---|---|
 | `VIBEWATCH_MCP_KEY` | No | Org-scoped key (`vw_mcp_...`). When unset, the bridge uses the cached OAuth sign-in. |
 | `VIBEWATCH_MCP_URL` | No | Override the server URL. Defaults to `https://api.vibewatch.io/mcp/`. |
+| `VIBEWATCH_MCP_OPEN_CMD` | No | Override the browser opener the bridge uses for sign-in tabs (invoked with the URL as its single argument). For hosts where the platform default (`open`/`xdg-open`/`rundll32`) isn't right. |
 
 Extra CLI arguments (e.g. `--debug`) pass through to `mcp-remote`.
 

@@ -42,11 +42,15 @@ const {
   acquireSpawnSlot,
   bridgeArgs,
   clearAuthMarker,
+  extractAuthUrl,
   makeLineSplitter,
+  noAutoOpenShimPath,
   oauthSpawnGate,
+  openBrowser,
+  recordWaitMarker,
   resolveMcpRemoteBin,
   spawnClaimEnabled,
-  writeAuthMarker,
+  tryClaimAuthPrompt,
   fail,
 } = require("../lib/common.js");
 
@@ -166,10 +170,24 @@ async function runBridge() {
   // Extra args (e.g. --debug) pass straight through to mcp-remote.
   const passthrough = process.argv.slice(2);
 
+  // --require shim + env flag: mcp-remote must never open a browser itself
+  // (issue #10 — the takeover cascade in its auth coordination opens a tab
+  // per live proxy on a mass 401). The bridge opens the tab instead, gated
+  // machine-wide below. Set for key mode too: it never prompts, and one
+  // invariant ("mcp-remote under the bridge never opens a browser") is
+  // simpler than two.
   const child = spawn(
     process.execPath,
-    [mcpRemoteBin, ...bridgeArgs({ keyMode, serverUrl, passthrough })],
-    { stdio: ["inherit", "inherit", "pipe"] }
+    [
+      "--require",
+      noAutoOpenShimPath(),
+      mcpRemoteBin,
+      ...bridgeArgs({ keyMode, serverUrl, passthrough }),
+    ],
+    {
+      stdio: ["inherit", "inherit", "pipe"],
+      env: { ...process.env, VIBEWATCH_MCP_SUPPRESS_BROWSER_OPEN: "1" },
+    }
   );
 
   // Forward stderr while watching for the signatures of failed
@@ -231,11 +249,15 @@ async function runBridge() {
   // One marker write per auth phase; reset on proxy-up so a mid-session
   // re-auth records its own prompt.
   let markerRecorded = false;
-  const recordAuthMarker = () => {
+  // Armed by the prompt line: the authorize URL follows (real mcp-remote
+  // prints it on the next line; the same line also works). Reset on
+  // proxy-up along with the phase latch.
+  let awaitingAuthUrl = false;
+  const recordWaitAuthMarker = () => {
     if (keyMode || markerRecorded) return;
     markerRecorded = true;
     try {
-      writeAuthMarker(serverUrl);
+      recordWaitMarker(serverUrl);
     } catch (err) {
       // Named diagnostic, not a silent fallback: with no marker on disk,
       // every host respawn will prompt again (the pre-#4 tab storm).
@@ -245,6 +267,38 @@ async function runBridge() {
           "browser tab until you run `vibewatch-mcp connect-buzz`.\n"
       );
     }
+  };
+  // The single machine-wide tab open per auth phase (issue #10): the claim
+  // on the pending-auth marker decides which session opens; everyone else
+  // points at the already-open tab. mcp-remote's own open is suppressed by
+  // the --require shim, so this is the only place a tab can come from.
+  const handleAuthPromptUrl = (url) => {
+    markerRecorded = true; // the claim (ours or a foreign one) covers the phase
+    const claim = tryClaimAuthPrompt(serverUrl);
+    if (!claim.claimed) {
+      process.stderr.write(
+        "vibewatch-mcp: a Vibewatch sign-in tab is already open from " +
+          "another session — complete it there (or run " +
+          "`vibewatch-mcp connect-buzz`); not opening another.\n"
+      );
+      return;
+    }
+    if (claim.degraded) {
+      process.stderr.write(
+        "vibewatch-mcp: could not record the sign-in prompt " +
+          `(${claim.degraded}) — concurrent sessions may each open a ` +
+          "browser tab until you run `vibewatch-mcp connect-buzz`.\n"
+      );
+    }
+    openBrowser(url).then((opened) => {
+      process.stderr.write(
+        opened
+          ? "vibewatch-mcp: opened the Vibewatch sign-in page in your " +
+              "browser — approve it there.\n"
+          : "vibewatch-mcp: could not open a browser — copy the " +
+              "authorization URL above into one.\n"
+      );
+    });
   };
   const splitter = makeLineSplitter((line) => {
     // Failure signatures only count before the proxy is up — a transient
@@ -260,10 +314,18 @@ async function runBridge() {
     // AUTH_WAIT_RE covers the shared-auth path, whose lines never include
     // the authorize-URL prompt — without it, the loser of a sign-in
     // lockfile race would hold the client's stdio session forever.
-    if (AUTH_PROMPT_RE.test(line) || AUTH_WAIT_RE.test(line)) {
+    const isPrompt = AUTH_PROMPT_RE.test(line);
+    if (isPrompt || AUTH_WAIT_RE.test(line)) {
       connected = false;
       clearClaimPreauthTimer();
-      recordAuthMarker();
+      if (isPrompt) {
+        // The prompt path records its marker through the tab-open claim in
+        // handleAuthPromptUrl — writing one here first would make the
+        // claimant lose its own wx race.
+        awaitingAuthUrl = true;
+      } else {
+        recordWaitAuthMarker();
+      }
       if (keyMode) {
         // A rejected key surfaces as a silent 401 that drops mcp-remote into
         // its interactive OAuth fallback — never right for a key user. Bail
@@ -275,6 +337,13 @@ async function runBridge() {
           authAbort = true;
           endChild("SIGINT");
         }, BRIDGE_AUTH_WAIT_MS);
+      }
+    }
+    if (awaitingAuthUrl && !keyMode) {
+      const url = extractAuthUrl(line);
+      if (url) {
+        awaitingAuthUrl = false;
+        handleAuthPromptUrl(url);
       }
     }
     if (PROXY_UP_RE.test(line)) {
@@ -291,6 +360,7 @@ async function runBridge() {
       // waiting siblings may proceed.
       if (!keyMode) {
         markerRecorded = false;
+        awaitingAuthUrl = false;
         clearClaimPreauthTimer();
         clearAuthMarker(serverUrl);
         if (claim) claim.release();
