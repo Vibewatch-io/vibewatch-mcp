@@ -9,6 +9,7 @@ const require = createRequire(import.meta.url);
 const {
   DEFAULT_URL,
   authMarkerPath,
+  demoteAuthMarkerToWait,
   extractAuthUrl,
   readFreshAuthMarker,
   recordWaitMarker,
@@ -120,6 +121,39 @@ test("recordWaitMarker writes when nothing stands, and leaves a fresh wait marke
     assert.equal(first.kind, "wait");
     recordWaitMarker(DEFAULT_URL);
     assert.equal(readFreshAuthMarker(DEFAULT_URL).openedAt, first.openedAt);
+  });
+});
+
+// --- demoteAuthMarkerToWait (ownership handshake, re-review P1) ---
+
+test("demote turns this phase's own `opened` marker into `wait`", () => {
+  withTmpBase(() => {
+    const claim = tryClaimAuthPrompt(DEFAULT_URL);
+    assert.equal(claim.claimed, true);
+    demoteAuthMarkerToWait(DEFAULT_URL, claim.openedAt);
+    assert.equal(readFreshAuthMarker(DEFAULT_URL).kind, "wait");
+  });
+});
+
+test("demote leaves a NEWER phase's `opened` marker untouched", () => {
+  withTmpBase(() => {
+    // A late opener-failure callback carrying a stale openedAt must not
+    // clobber the claim a newer phase now holds.
+    writeMarker({ openedAt: Date.now(), kind: "opened" });
+    const onDisk = readFreshAuthMarker(DEFAULT_URL);
+    demoteAuthMarkerToWait(DEFAULT_URL, onDisk.openedAt - 5_000);
+    const after = readFreshAuthMarker(DEFAULT_URL);
+    assert.equal(after.kind, "opened");
+    assert.equal(after.openedAt, onDisk.openedAt);
+  });
+});
+
+test("demote without an openedAt handshake is a no-op", () => {
+  withTmpBase(() => {
+    const claim = tryClaimAuthPrompt(DEFAULT_URL);
+    assert.equal(claim.claimed, true);
+    demoteAuthMarkerToWait(DEFAULT_URL, undefined);
+    assert.equal(readFreshAuthMarker(DEFAULT_URL).kind, "opened");
   });
 });
 

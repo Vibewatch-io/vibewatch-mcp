@@ -309,8 +309,11 @@ async function runBridge() {
         // The `opened` marker just claimed would otherwise suppress every
         // session for the full TTL with NO tab behind it (review P2) —
         // demote it to `wait` so another session's prompt can claim and
-        // try its own opener, while host respawns stay suppressed.
-        demoteAuthMarkerToWait(serverUrl);
+        // try its own opener, while host respawns stay suppressed. The
+        // openedAt handshake makes the demotion a no-op if this phase's
+        // marker is no longer the one on disk (degraded claims carry no
+        // openedAt and skip it).
+        demoteAuthMarkerToWait(serverUrl, promptClaim.openedAt);
       }
       process.stderr.write(
         opened
