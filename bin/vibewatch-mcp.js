@@ -368,7 +368,14 @@ async function runBridge() {
         awaitingAuthUrl = true;
         if (!keyMode && !authUrlFallbackTimer) {
           authUrlFallbackTimer = setTimeout(() => {
-            if (awaitingAuthUrl) recordWaitAuthMarker();
+            if (awaitingAuthUrl) {
+              // Disarm as well as record: left armed, the NEXT URL-bearing
+              // log line (mcp-remote logs its server endpoints) would be
+              // "extracted", claimed, and opened as a sign-in page —
+              // planting a bogus `opened` marker for the TTL (Cubic P2).
+              awaitingAuthUrl = false;
+              recordWaitAuthMarker();
+            }
           }, AUTH_URL_FALLBACK_MS);
           authUrlFallbackTimer.unref();
         }

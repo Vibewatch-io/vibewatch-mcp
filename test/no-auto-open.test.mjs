@@ -97,8 +97,14 @@ test("the vendored `open` stays pinned to the version the shim was verified agai
   const rootPkg = JSON.parse(
     fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")
   );
-  const pinned = rootPkg.overrides?.["mcp-remote"]?.open;
-  assert.ok(pinned, "package.json must pin mcp-remote's `open` via overrides");
+  // The DIRECT dependency is the pin that reaches installed users (npm
+  // ignores a dependency's own `overrides`; the direct dep hoists and
+  // satisfies mcp-remote's ^10.1.0 range). The override guards this repo's
+  // tree; both must agree.
+  const pinned = rootPkg.dependencies?.open;
+  assert.ok(pinned, "package.json must pin `open` as a direct dependency");
+  assert.match(pinned, /^\d/, "exact version, not a range");
+  assert.equal(rootPkg.overrides?.["mcp-remote"]?.open, pinned);
   const installed = JSON.parse(
     fs.readFileSync(
       path.join(repoRoot, "node_modules", "open", "package.json"),
