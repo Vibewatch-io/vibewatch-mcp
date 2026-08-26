@@ -11,6 +11,8 @@ const {
   authMarkerPath,
   demoteAuthMarkerToWait,
   extractAuthUrl,
+  latestTokenMtime,
+  openBrowser,
   readFreshAuthMarker,
   recordWaitMarker,
   retireSatisfiedAuthMarker,
@@ -213,6 +215,44 @@ test("retireSatisfiedAuthMarker leaves a live unsatisfied claim standing", () =>
     assert.equal(retireSatisfiedAuthMarker(DEFAULT_URL), false);
     assert.equal(readFreshAuthMarker(DEFAULT_URL).claimId, claim.claimId);
   });
+});
+
+test("a far-future token mtime is excluded from the watermark", () => {
+  withTmpBase((tmp) => {
+    // Clock-backward / restored-file case (PR review): a future mtime baked
+    // into tokensSeen would out-compare every later genuine completion and
+    // strand the marker until the TTL.
+    writeTokens(tmp, Date.now() + 10 * 60 * 1000);
+    assert.equal(latestTokenMtime(DEFAULT_URL), 0);
+    const claim = tryClaimAuthPrompt(DEFAULT_URL);
+    assert.equal(claim.claimed, true);
+    // A genuine completion now still satisfies the claim.
+    const tokensDir = path.join(tmp, "mcp-remote-0.0.1");
+    fs.mkdirSync(tokensDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(tokensDir, `${serverHash(DEFAULT_URL)}_tokens.json`),
+      "{}"
+    );
+    assert.equal(retireSatisfiedAuthMarker(DEFAULT_URL), true);
+  });
+});
+
+// --- openBrowser exit handling (PR review) ---
+
+test("an opener that spawns but exits nonzero reports failure", async () => {
+  // VIBEWATCH_MCP_OPEN_CMD is invoked as `<cmd> <url>` — node treats the
+  // URL as a missing script and exits nonzero without opening anything.
+  const ok = await openBrowser("https://example.test/x", {
+    env: { VIBEWATCH_MCP_OPEN_CMD: process.execPath },
+  });
+  assert.equal(ok, false);
+});
+
+test("a missing opener command reports failure", async () => {
+  const ok = await openBrowser("https://example.test/x", {
+    env: { VIBEWATCH_MCP_OPEN_CMD: "vw-definitely-missing-opener" },
+  });
+  assert.equal(ok, false);
 });
 
 // --- extractAuthUrl ---
