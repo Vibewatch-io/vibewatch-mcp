@@ -48,11 +48,18 @@ function runBridgeAsync(tmp, script, extraEnv = {}) {
       [path.join(fixtures, "bridge-driver.cjs")],
       { env: bridgeEnv(tmp, script, extraEnv), stdio: ["ignore", "ignore", "pipe"] }
     );
+    // Same 30s bound runBridge gets from spawnSync's timeout option — a
+    // hung driver child must fail the test, not wedge the runner.
+    const killer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+    killer.unref();
     let stderr = "";
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
-    child.on("close", (code) => resolve({ status: code, stderr }));
+    child.on("close", (code) => {
+      clearTimeout(killer);
+      resolve({ status: code, stderr });
+    });
   });
 }
 
