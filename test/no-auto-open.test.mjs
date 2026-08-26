@@ -93,7 +93,8 @@ test("the vendored `open` stays pinned to the version the shim was verified agai
   // The shim intercepts open@10.2.0's call-time `childProcess.spawn`
   // lookup. A different 10.x could switch to execFile or a snapshotted
   // named import and silently restore mcp-remote's auto-open — package.json
-  // pins it via overrides; this fails loudly if the pin drifts.
+  // pins it as a direct dependency (the pin that reaches installed users)
+  // plus an override for this repo's tree; this fails loudly on drift.
   const rootPkg = JSON.parse(
     fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")
   );

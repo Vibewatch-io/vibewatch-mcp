@@ -161,27 +161,48 @@ test("demote without a claimId handshake is a no-op", () => {
   });
 });
 
-// --- retireSatisfiedAuthMarker (coarse-mtime completion, re-review P1) ---
+// --- retireSatisfiedAuthMarker (tokensSeen watermark, re-review P1s) ---
 
-test("a completed sign-in retires even when token mtime ties the claim (coarse mtime)", () => {
+function writeTokens(tmp, mtimeMs) {
+  const tokensDir = path.join(tmp, "mcp-remote-0.0.0");
+  fs.mkdirSync(tokensDir, { recursive: true });
+  const tokensPath = path.join(
+    tokensDir,
+    `${serverHash(DEFAULT_URL)}_tokens.json`
+  );
+  fs.writeFileSync(tokensPath, "{}");
+  if (mtimeMs) {
+    const when = new Date(mtimeMs);
+    fs.utimesSync(tokensPath, when, when);
+  }
+  return tokensPath;
+}
+
+test("a completed sign-in retires even when token mtime ties or precedes the claim (coarse mtime)", () => {
   withTmpBase((tmp) => {
-    const claim = tryClaimAuthPrompt(DEFAULT_URL);
+    const claim = tryClaimAuthPrompt(DEFAULT_URL); // no tokens yet → watermark 0
     assert.equal(claim.claimed, true);
-    // Token write truncated into the same (or an earlier) timestamp bucket
-    // as the claim — strictly-newer says unsatisfied, the graced judgment
-    // says satisfied.
-    const tokensDir = path.join(tmp, "mcp-remote-0.0.0");
-    fs.mkdirSync(tokensDir, { recursive: true });
-    const tokensPath = path.join(
-      tokensDir,
-      `${serverHash(DEFAULT_URL)}_tokens.json`
-    );
-    fs.writeFileSync(tokensPath, "{}");
-    const tied = new Date(claim.openedAt - 500);
-    fs.utimesSync(tokensPath, tied, tied);
-    assert.equal(tryRetireAuthMarker(DEFAULT_URL), false, "strict declines");
+    // Completion whose mtime is truncated BELOW openedAt — any
+    // mtime-vs-openedAt window rule reads this as unsatisfied; the
+    // watermark sees the token file changed since the claim.
+    writeTokens(tmp, claim.openedAt - 500);
     assert.equal(retireSatisfiedAuthMarker(DEFAULT_URL), true);
     assert.equal(readFreshAuthMarker(DEFAULT_URL), null);
+  });
+});
+
+test("a claim made AFTER a token write is never read as satisfied by it (storm window)", () => {
+  withTmpBase((tmp) => {
+    // The round-5 P1: tokens at T0, revocation, claim at T0+ε. Window rules
+    // called this satisfied and cascaded deletions; the watermark knows the
+    // token file has NOT changed since the claim.
+    writeTokens(tmp, Date.now() - 3_000);
+    const claim = tryClaimAuthPrompt(DEFAULT_URL);
+    assert.equal(claim.claimed, true);
+    assert.equal(retireSatisfiedAuthMarker(DEFAULT_URL), false);
+    assert.equal(tryRetireAuthMarker(DEFAULT_URL), false);
+    assert.equal(tryClaimAuthPrompt(DEFAULT_URL).claimed, false);
+    assert.equal(readFreshAuthMarker(DEFAULT_URL).claimId, claim.claimId);
   });
 });
 
