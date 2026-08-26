@@ -41,12 +41,17 @@ const {
   CLAIM_PREAUTH_ABORT_MS,
   acquireSpawnSlot,
   bridgeArgs,
-  clearAuthMarker,
+  demoteAuthMarkerToWait,
+  extractAuthUrl,
   makeLineSplitter,
+  noAutoOpenShimPath,
   oauthSpawnGate,
+  openBrowser,
+  recordWaitMarker,
   resolveMcpRemoteBin,
+  retireSatisfiedAuthMarker,
   spawnClaimEnabled,
-  writeAuthMarker,
+  tryClaimAuthPrompt,
   fail,
 } = require("../lib/common.js");
 
@@ -102,7 +107,14 @@ async function runBridge() {
   if (!keyMode) {
     const gate = oauthSpawnGate(serverUrl);
     if (gate === "satisfied") {
-      clearAuthMarker(serverUrl);
+      // Retire (rename-and-verify), never blind-clear: between the gate read
+      // and this line a NEWER auth phase may have claimed the marker path,
+      // and deleting its fresh `opened` claim would let a second tab open
+      // (review P1). The satisfied variant is watermark-judged (the token
+      // file changed since the claim) and identity-locked to the observed
+      // marker, so a completed sign-in retires even on coarse-mtime
+      // filesystems without a live claim ever reading satisfied.
+      retireSatisfiedAuthMarker(serverUrl);
     } else if (gate === "suppress") {
       exitSuppressed(
         "vibewatch-mcp: a Vibewatch sign-in tab was already opened and " +
@@ -127,7 +139,7 @@ async function runBridge() {
     if (slot.status === "acquired") {
       claim = slot;
     } else if (slot.status === "satisfied") {
-      clearAuthMarker(serverUrl);
+      retireSatisfiedAuthMarker(serverUrl);
     } else if (slot.status === "suppress") {
       exitSuppressed(
         "vibewatch-mcp: another vibewatch-mcp process opened the sign-in " +
@@ -166,10 +178,24 @@ async function runBridge() {
   // Extra args (e.g. --debug) pass straight through to mcp-remote.
   const passthrough = process.argv.slice(2);
 
+  // --require shim + env flag: mcp-remote must never open a browser itself
+  // (issue #10 — the takeover cascade in its auth coordination opens a tab
+  // per live proxy on a mass 401). The bridge opens the tab instead, gated
+  // machine-wide below. Set for key mode too: it never prompts, and one
+  // invariant ("mcp-remote under the bridge never opens a browser") is
+  // simpler than two.
   const child = spawn(
     process.execPath,
-    [mcpRemoteBin, ...bridgeArgs({ keyMode, serverUrl, passthrough })],
-    { stdio: ["inherit", "inherit", "pipe"] }
+    [
+      "--require",
+      noAutoOpenShimPath(),
+      mcpRemoteBin,
+      ...bridgeArgs({ keyMode, serverUrl, passthrough }),
+    ],
+    {
+      stdio: ["inherit", "inherit", "pipe"],
+      env: { ...process.env, VIBEWATCH_MCP_SUPPRESS_BROWSER_OPEN: "1" },
+    }
   );
 
   // Forward stderr while watching for the signatures of failed
@@ -231,11 +257,26 @@ async function runBridge() {
   // One marker write per auth phase; reset on proxy-up so a mid-session
   // re-auth records its own prompt.
   let markerRecorded = false;
-  const recordAuthMarker = () => {
+  // Armed by the prompt line: the authorize URL follows (real mcp-remote
+  // prints it on the next line; the same line also works). Reset on
+  // proxy-up along with the phase latch.
+  let awaitingAuthUrl = false;
+  // How long a prompt may await its URL before the fallback records a
+  // `wait` marker anyway (see the isPrompt branch below). Well past any
+  // stream-buffering gap, well short of BRIDGE_AUTH_WAIT_MS.
+  const AUTH_URL_FALLBACK_MS = 5_000;
+  let authUrlFallbackTimer = null;
+  const clearAuthUrlFallbackTimer = () => {
+    if (authUrlFallbackTimer) {
+      clearTimeout(authUrlFallbackTimer);
+      authUrlFallbackTimer = null;
+    }
+  };
+  const recordWaitAuthMarker = () => {
     if (keyMode || markerRecorded) return;
     markerRecorded = true;
     try {
-      writeAuthMarker(serverUrl);
+      recordWaitMarker(serverUrl);
     } catch (err) {
       // Named diagnostic, not a silent fallback: with no marker on disk,
       // every host respawn will prompt again (the pre-#4 tab storm).
@@ -245,6 +286,57 @@ async function runBridge() {
           "browser tab until you run `vibewatch-mcp connect-buzz`.\n"
       );
     }
+  };
+  // The single machine-wide tab open per auth phase (issue #10): the claim
+  // on the pending-auth marker decides which session opens; everyone else
+  // points at the already-open tab. mcp-remote's own open is suppressed by
+  // the --require shim, so this is the only place a tab can come from.
+  //
+  // Latched per phase: mcp-remote with --debug emits every log line twice
+  // (log() → console.error + debugLog → console.error), so the prompt block
+  // repeats — re-entering the claim would hit our OWN fresh `opened` marker
+  // and print a false "another session" warning right after "opened the
+  // sign-in page". Reset on proxy-up with the other phase latches.
+  let authUrlHandled = false;
+  const handleAuthPromptUrl = (url) => {
+    if (authUrlHandled) return;
+    authUrlHandled = true;
+    markerRecorded = true; // the claim (ours or a foreign one) covers the phase
+    const promptClaim = tryClaimAuthPrompt(serverUrl);
+    if (!promptClaim.claimed) {
+      process.stderr.write(
+        "vibewatch-mcp: a Vibewatch sign-in tab is already open from " +
+          "another session — complete it there (or run " +
+          "`vibewatch-mcp connect-buzz`); not opening another.\n"
+      );
+      return;
+    }
+    if (promptClaim.degraded) {
+      process.stderr.write(
+        "vibewatch-mcp: could not record the sign-in prompt " +
+          `(${promptClaim.degraded}) — concurrent sessions may each open a ` +
+          "browser tab until you run `vibewatch-mcp connect-buzz`.\n"
+      );
+    }
+    openBrowser(url).then((opened) => {
+      if (!opened) {
+        // The `opened` marker just claimed would otherwise suppress every
+        // session for the full TTL with NO tab behind it (review P2) —
+        // demote it to `wait` so another session's prompt can claim and
+        // try its own opener, while host respawns stay suppressed. The
+        // claimId handshake makes the demotion a no-op if this phase's
+        // marker is no longer the one on disk (degraded claims carry no
+        // claimId and skip it; openedAt alone can collide within a ms).
+        demoteAuthMarkerToWait(serverUrl, promptClaim.claimId);
+      }
+      process.stderr.write(
+        opened
+          ? "vibewatch-mcp: opened the Vibewatch sign-in page in your " +
+              "browser — approve it there.\n"
+          : "vibewatch-mcp: could not open a browser — copy the " +
+              "authorization URL above into one.\n"
+      );
+    });
   };
   const splitter = makeLineSplitter((line) => {
     // Failure signatures only count before the proxy is up — a transient
@@ -260,10 +352,37 @@ async function runBridge() {
     // AUTH_WAIT_RE covers the shared-auth path, whose lines never include
     // the authorize-URL prompt — without it, the loser of a sign-in
     // lockfile race would hold the client's stdio session forever.
-    if (AUTH_PROMPT_RE.test(line) || AUTH_WAIT_RE.test(line)) {
+    const isPrompt = AUTH_PROMPT_RE.test(line);
+    if (isPrompt || AUTH_WAIT_RE.test(line)) {
       connected = false;
       clearClaimPreauthTimer();
-      recordAuthMarker();
+      if (isPrompt) {
+        // The prompt path records its marker through the tab-open claim in
+        // handleAuthPromptUrl — writing one here first would make the
+        // claimant lose its own wx race. But if no URL ever gets extracted
+        // (mcp-remote reformats the prompt, an unparseable URL), NOTHING
+        // would be recorded and — with auto-open suppressed — no tab opens
+        // either, so every host respawn would re-run this dead phase with
+        // no issue-#4 suppression (review P2). A short fallback records the
+        // `wait` marker if the URL hasn't arrived; cleared on capture,
+        // proxy-up, and close.
+        awaitingAuthUrl = true;
+        if (!keyMode && !authUrlFallbackTimer) {
+          authUrlFallbackTimer = setTimeout(() => {
+            if (awaitingAuthUrl) {
+              // Disarm as well as record: left armed, the NEXT URL-bearing
+              // log line (mcp-remote logs its server endpoints) would be
+              // "extracted", claimed, and opened as a sign-in page —
+              // planting a bogus `opened` marker for the TTL (Cubic P2).
+              awaitingAuthUrl = false;
+              recordWaitAuthMarker();
+            }
+          }, AUTH_URL_FALLBACK_MS);
+          authUrlFallbackTimer.unref();
+        }
+      } else {
+        recordWaitAuthMarker();
+      }
       if (keyMode) {
         // A rejected key surfaces as a silent 401 that drops mcp-remote into
         // its interactive OAuth fallback — never right for a key user. Bail
@@ -275,6 +394,14 @@ async function runBridge() {
           authAbort = true;
           endChild("SIGINT");
         }, BRIDGE_AUTH_WAIT_MS);
+      }
+    }
+    if (awaitingAuthUrl && !keyMode) {
+      const url = extractAuthUrl(line);
+      if (url) {
+        awaitingAuthUrl = false;
+        clearAuthUrlFallbackTimer();
+        handleAuthPromptUrl(url);
       }
     }
     if (PROXY_UP_RE.test(line)) {
@@ -291,8 +418,16 @@ async function runBridge() {
       // waiting siblings may proceed.
       if (!keyMode) {
         markerRecorded = false;
+        awaitingAuthUrl = false;
+        authUrlHandled = false;
+        clearAuthUrlFallbackTimer();
         clearClaimPreauthTimer();
-        clearAuthMarker(serverUrl);
+        // Retire, never blind-clear: this bridge's phase just completed
+        // (tokens landed, so its marker reads satisfied), but a NEWER
+        // phase's fresh `opened` claim on the same path must survive
+        // (review P1). Watermark-judged + identity-matched so the finished
+        // marker retires while a live claim never reads satisfied.
+        retireSatisfiedAuthMarker(serverUrl);
         if (claim) claim.release();
       }
     }
@@ -320,6 +455,12 @@ async function runBridge() {
     splitter.flush();
     if (claim) claim.release();
     clearClaimPreauthTimer();
+    // Deliberately BEFORE clearing the fallback: a child that died with a
+    // prompt still awaiting its URL should leave the `wait` marker the
+    // fallback exists for — flush() above ran the splitter one last time,
+    // and the timer (unref'd) will never fire post-exit, so record now.
+    if (awaitingAuthUrl && !keyMode) recordWaitAuthMarker();
+    clearAuthUrlFallbackTimer();
     if (authTimer) clearTimeout(authTimer);
     if (killTimer) clearTimeout(killTimer);
     if (claimStallAbort) {

@@ -149,18 +149,20 @@ test("newerTokensExist is false on a missing cache base", () => {
   }
 });
 
-test("oauthSpawnGate: fresh marker suppresses; stale tokens do NOT lift it", () => {
-  // The adversarial-review high finding: mere token-file existence (old
-  // version, revoked, corrupt) must not bypass the cap — only a sign-in
-  // that completed around or after the prompt opened may.
+test("oauthSpawnGate: fresh marker suppresses; pre-existing stale tokens do NOT lift it", () => {
+  // The adversarial-review high finding, restated for the watermark: token
+  // state the claim already observed (old version, revoked, corrupt) must
+  // not bypass the cap — only a token write that LANDED after the claim
+  // (a completed sign-in) may.
   withTempCache((tmp) => {
     assert.equal(oauthSpawnGate(URL_A), "clear");
+    // Stale tokens exist BEFORE the marker — the claim's tokensSeen
+    // watermark captures them.
+    writeTokens(tmp, URL_A, "mcp-remote-0.1.37", Date.now() - TOKENS_GRACE_MS * 2);
     writeAuthMarker(URL_A);
     assert.equal(oauthSpawnGate(URL_A), "suppress");
-    const { openedAt } = readFreshAuthMarker(URL_A);
-    writeTokens(tmp, URL_A, "mcp-remote-0.1.37", openedAt - TOKENS_GRACE_MS * 2);
-    assert.equal(oauthSpawnGate(URL_A), "suppress");
-    writeTokens(tmp, URL_A, "mcp-remote-0.1.38", openedAt + 60_000);
+    // A genuine completion (the token file changes) lifts it.
+    writeTokens(tmp, URL_A, "mcp-remote-0.1.38", Date.now());
     assert.equal(oauthSpawnGate(URL_A), "satisfied");
   });
 });

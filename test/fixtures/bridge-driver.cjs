@@ -11,6 +11,20 @@ if (!process.env.VW_TEST_FAKE_MCP_REMOTE) process.exit(0);
 
 const common = require("../../lib/common.js");
 common.resolveMcpRemoteBin = () => process.env.VW_TEST_FAKE_MCP_REMOTE;
+// Always stub the browser opener under the fake harness — a regression here
+// must fail an assertion, never open a real tab on the machine running the
+// tests. VW_TEST_OPEN_LOG records each would-be open (one URL per line);
+// VW_TEST_OPEN_FAIL=1 simulates an opener that can't spawn.
+common.openBrowser = (url) => {
+  if (process.env.VW_TEST_OPEN_FAIL === "1") return Promise.resolve(false);
+  if (process.env.VW_TEST_OPEN_LOG) {
+    require("node:fs").appendFileSync(
+      process.env.VW_TEST_OPEN_LOG,
+      url + "\n"
+    );
+  }
+  return Promise.resolve(true);
+};
 // VW_TEST_CLAIM=1 forces the win32-only spawn claim on, with test-speed
 // wait/poll timings, so the bridge's claim wiring runs on macOS/Linux CI.
 if (process.env.VW_TEST_CLAIM === "1") {
