@@ -41,7 +41,7 @@ const {
   CLAIM_PREAUTH_ABORT_MS,
   acquireSpawnSlot,
   bridgeArgs,
-  clearAuthMarker,
+  demoteAuthMarkerToWait,
   extractAuthUrl,
   makeLineSplitter,
   noAutoOpenShimPath,
@@ -51,6 +51,7 @@ const {
   resolveMcpRemoteBin,
   spawnClaimEnabled,
   tryClaimAuthPrompt,
+  tryRetireAuthMarker,
   fail,
 } = require("../lib/common.js");
 
@@ -106,7 +107,11 @@ async function runBridge() {
   if (!keyMode) {
     const gate = oauthSpawnGate(serverUrl);
     if (gate === "satisfied") {
-      clearAuthMarker(serverUrl);
+      // Retire (rename-and-verify), never blind-clear: between the gate read
+      // and this line a NEWER auth phase may have claimed the marker path,
+      // and deleting its fresh `opened` claim would let a second tab open
+      // (review P1). Retirement restores a live foreign claim it steals.
+      tryRetireAuthMarker(serverUrl);
     } else if (gate === "suppress") {
       exitSuppressed(
         "vibewatch-mcp: a Vibewatch sign-in tab was already opened and " +
@@ -131,7 +136,7 @@ async function runBridge() {
     if (slot.status === "acquired") {
       claim = slot;
     } else if (slot.status === "satisfied") {
-      clearAuthMarker(serverUrl);
+      tryRetireAuthMarker(serverUrl);
     } else if (slot.status === "suppress") {
       exitSuppressed(
         "vibewatch-mcp: another vibewatch-mcp process opened the sign-in " +
@@ -272,10 +277,19 @@ async function runBridge() {
   // on the pending-auth marker decides which session opens; everyone else
   // points at the already-open tab. mcp-remote's own open is suppressed by
   // the --require shim, so this is the only place a tab can come from.
+  //
+  // Latched per phase: mcp-remote with --debug emits every log line twice
+  // (log() → console.error + debugLog → console.error), so the prompt block
+  // repeats — re-entering the claim would hit our OWN fresh `opened` marker
+  // and print a false "another session" warning right after "opened the
+  // sign-in page". Reset on proxy-up with the other phase latches.
+  let authUrlHandled = false;
   const handleAuthPromptUrl = (url) => {
+    if (authUrlHandled) return;
+    authUrlHandled = true;
     markerRecorded = true; // the claim (ours or a foreign one) covers the phase
-    const claim = tryClaimAuthPrompt(serverUrl);
-    if (!claim.claimed) {
+    const promptClaim = tryClaimAuthPrompt(serverUrl);
+    if (!promptClaim.claimed) {
       process.stderr.write(
         "vibewatch-mcp: a Vibewatch sign-in tab is already open from " +
           "another session — complete it there (or run " +
@@ -283,14 +297,21 @@ async function runBridge() {
       );
       return;
     }
-    if (claim.degraded) {
+    if (promptClaim.degraded) {
       process.stderr.write(
         "vibewatch-mcp: could not record the sign-in prompt " +
-          `(${claim.degraded}) — concurrent sessions may each open a ` +
+          `(${promptClaim.degraded}) — concurrent sessions may each open a ` +
           "browser tab until you run `vibewatch-mcp connect-buzz`.\n"
       );
     }
     openBrowser(url).then((opened) => {
+      if (!opened) {
+        // The `opened` marker just claimed would otherwise suppress every
+        // session for the full TTL with NO tab behind it (review P2) —
+        // demote it to `wait` so another session's prompt can claim and
+        // try its own opener, while host respawns stay suppressed.
+        demoteAuthMarkerToWait(serverUrl);
+      }
       process.stderr.write(
         opened
           ? "vibewatch-mcp: opened the Vibewatch sign-in page in your " +
@@ -361,8 +382,13 @@ async function runBridge() {
       if (!keyMode) {
         markerRecorded = false;
         awaitingAuthUrl = false;
+        authUrlHandled = false;
         clearClaimPreauthTimer();
-        clearAuthMarker(serverUrl);
+        // Retire, never blind-clear: this bridge's phase just completed
+        // (tokens landed, so its marker reads satisfied), but a NEWER
+        // phase's fresh `opened` claim on the same path must survive
+        // (review P1).
+        tryRetireAuthMarker(serverUrl);
         if (claim) claim.release();
       }
     }

@@ -128,11 +128,68 @@ test("wait line first, then own prompt: the wait marker is upgraded and the tab 
   assert.equal(markerKind(tmp), "opened");
 });
 
-test("a failing opener prints copy-the-URL guidance", () => {
+test("a failing opener prints guidance and demotes the marker to `wait`", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vw-mcp-open-"));
   const result = runBridge(tmp, "prompt", { VW_TEST_OPEN_FAIL: "1" });
   assert.equal(result.status, 0);
   assert.match(result.stderr, /could not open a browser/);
+  // A stranded `opened` marker would suppress every session for the full
+  // TTL with no tab behind it (review P2) — it must read as `wait`.
+  assert.equal(markerKind(tmp), "wait");
+});
+
+test("after one session's opener fails, a live sibling's prompt still opens the tab", async () => {
+  // Same start-order pattern as the storm test: the rescuer starts first
+  // (spawn gate must run before any marker exists) but prompts after the
+  // failing session has claimed, failed, and demoted its marker to `wait`.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vw-mcp-open-"));
+  const rescuerPromise = runBridgeAsync(tmp, "prompt", {
+    VW_TEST_LINE_DELAY_MS: "2000",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const failing = await runBridgeAsync(tmp, "prompt", {
+    VW_TEST_LINE_DELAY_MS: "100",
+    VW_TEST_OPEN_FAIL: "1",
+  });
+  const rescuer = await rescuerPromise;
+  assert.match(failing.stderr, /could not open a browser/);
+  assert.match(rescuer.stderr, /opened the Vibewatch sign-in page/);
+  assert.equal(opens(tmp).length, 1, "the rescuer's tab, exactly once");
+  assert.equal(markerKind(tmp), "opened");
+});
+
+test("a repeated prompt in one phase (--debug double logging) opens once, no false warning", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vw-mcp-open-"));
+  const result = runBridge(tmp, "prompt,prompt");
+  assert.equal(result.status, 0);
+  assert.equal(opens(tmp).length, 1);
+  assert.doesNotMatch(result.stderr, /already open from another session/);
+});
+
+test("fragmented stderr chunks still yield exactly one extracted URL", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vw-mcp-open-"));
+  const result = runBridge(tmp, "prompt", { VW_TEST_FRAGMENT: "1" });
+  assert.equal(result.status, 0);
+  assert.deepEqual(opens(tmp), [
+    "https://example.test/authorize?request_id=fixture&client_id=abc",
+  ]);
+});
+
+test("the bridge's mcp-remote spawn carries the shim: open() inside the child is suppressed", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vw-mcp-open-"));
+  const shimLog = path.join(tmp, "shim.log");
+  const result = runBridge(tmp, "open,proxy-up", {
+    VIBEWATCH_MCP_SUPPRESS_LOG: shimLog,
+  });
+  assert.equal(result.status, 0);
+  const entries = fs.existsSync(shimLog)
+    ? fs.readFileSync(shimLog, "utf8").split("\n").filter(Boolean)
+    : [];
+  assert.equal(
+    entries.length,
+    1,
+    "the vendored open package's spawn must be intercepted under the bridge"
+  );
 });
 
 test("key mode never opens a browser", () => {
