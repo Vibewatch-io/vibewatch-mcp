@@ -49,9 +49,9 @@ const {
   openBrowser,
   recordWaitMarker,
   resolveMcpRemoteBin,
+  retireSatisfiedAuthMarker,
   spawnClaimEnabled,
   tryClaimAuthPrompt,
-  tryRetireAuthMarker,
   fail,
 } = require("../lib/common.js");
 
@@ -110,8 +110,10 @@ async function runBridge() {
       // Retire (rename-and-verify), never blind-clear: between the gate read
       // and this line a NEWER auth phase may have claimed the marker path,
       // and deleting its fresh `opened` claim would let a second tab open
-      // (review P1). Retirement restores a live foreign claim it steals.
-      tryRetireAuthMarker(serverUrl);
+      // (review P1). The satisfied variant matches the gate's graced
+      // judgment, identity-locked to the observed marker, so a completed
+      // sign-in retires even on coarse-mtime filesystems (re-review P1).
+      retireSatisfiedAuthMarker(serverUrl);
     } else if (gate === "suppress") {
       exitSuppressed(
         "vibewatch-mcp: a Vibewatch sign-in tab was already opened and " +
@@ -136,7 +138,7 @@ async function runBridge() {
     if (slot.status === "acquired") {
       claim = slot;
     } else if (slot.status === "satisfied") {
-      tryRetireAuthMarker(serverUrl);
+      retireSatisfiedAuthMarker(serverUrl);
     } else if (slot.status === "suppress") {
       exitSuppressed(
         "vibewatch-mcp: another vibewatch-mcp process opened the sign-in " +
@@ -321,10 +323,10 @@ async function runBridge() {
         // session for the full TTL with NO tab behind it (review P2) —
         // demote it to `wait` so another session's prompt can claim and
         // try its own opener, while host respawns stay suppressed. The
-        // openedAt handshake makes the demotion a no-op if this phase's
+        // claimId handshake makes the demotion a no-op if this phase's
         // marker is no longer the one on disk (degraded claims carry no
-        // openedAt and skip it).
-        demoteAuthMarkerToWait(serverUrl, promptClaim.openedAt);
+        // claimId and skip it; openedAt alone can collide within a ms).
+        demoteAuthMarkerToWait(serverUrl, promptClaim.claimId);
       }
       process.stderr.write(
         opened
@@ -415,8 +417,9 @@ async function runBridge() {
         // Retire, never blind-clear: this bridge's phase just completed
         // (tokens landed, so its marker reads satisfied), but a NEWER
         // phase's fresh `opened` claim on the same path must survive
-        // (review P1).
-        tryRetireAuthMarker(serverUrl);
+        // (review P1). Graced + identity-matched so a same-mtime-bucket
+        // token write still retires the finished marker (re-review P1).
+        retireSatisfiedAuthMarker(serverUrl);
         if (claim) claim.release();
       }
     }

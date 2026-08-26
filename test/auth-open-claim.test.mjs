@@ -13,8 +13,10 @@ const {
   extractAuthUrl,
   readFreshAuthMarker,
   recordWaitMarker,
+  retireSatisfiedAuthMarker,
   serverHash,
   tryClaimAuthPrompt,
+  tryRetireAuthMarker,
 } = require("../lib/common.js");
 
 // Run each case against an isolated cache base (the marker path derives from
@@ -130,30 +132,65 @@ test("demote turns this phase's own `opened` marker into `wait`", () => {
   withTmpBase(() => {
     const claim = tryClaimAuthPrompt(DEFAULT_URL);
     assert.equal(claim.claimed, true);
-    demoteAuthMarkerToWait(DEFAULT_URL, claim.openedAt);
+    assert.ok(claim.claimId);
+    demoteAuthMarkerToWait(DEFAULT_URL, claim.claimId);
     assert.equal(readFreshAuthMarker(DEFAULT_URL).kind, "wait");
   });
 });
 
-test("demote leaves a NEWER phase's `opened` marker untouched", () => {
+test("demote leaves a DIFFERENT claim's `opened` marker untouched", () => {
   withTmpBase(() => {
-    // A late opener-failure callback carrying a stale openedAt must not
-    // clobber the claim a newer phase now holds.
-    writeMarker({ openedAt: Date.now(), kind: "opened" });
-    const onDisk = readFreshAuthMarker(DEFAULT_URL);
-    demoteAuthMarkerToWait(DEFAULT_URL, onDisk.openedAt - 5_000);
+    // A late opener-failure callback carrying another phase's identity —
+    // openedAt can collide within a millisecond, so the handshake is the
+    // random claimId — must not clobber the claim now on disk.
+    const claim = tryClaimAuthPrompt(DEFAULT_URL);
+    assert.equal(claim.claimed, true);
+    demoteAuthMarkerToWait(DEFAULT_URL, "feedfacefeedface");
     const after = readFreshAuthMarker(DEFAULT_URL);
     assert.equal(after.kind, "opened");
-    assert.equal(after.openedAt, onDisk.openedAt);
+    assert.equal(after.claimId, claim.claimId);
   });
 });
 
-test("demote without an openedAt handshake is a no-op", () => {
+test("demote without a claimId handshake is a no-op", () => {
   withTmpBase(() => {
     const claim = tryClaimAuthPrompt(DEFAULT_URL);
     assert.equal(claim.claimed, true);
     demoteAuthMarkerToWait(DEFAULT_URL, undefined);
     assert.equal(readFreshAuthMarker(DEFAULT_URL).kind, "opened");
+  });
+});
+
+// --- retireSatisfiedAuthMarker (coarse-mtime completion, re-review P1) ---
+
+test("a completed sign-in retires even when token mtime ties the claim (coarse mtime)", () => {
+  withTmpBase((tmp) => {
+    const claim = tryClaimAuthPrompt(DEFAULT_URL);
+    assert.equal(claim.claimed, true);
+    // Token write truncated into the same (or an earlier) timestamp bucket
+    // as the claim — strictly-newer says unsatisfied, the graced judgment
+    // says satisfied.
+    const tokensDir = path.join(tmp, "mcp-remote-0.0.0");
+    fs.mkdirSync(tokensDir, { recursive: true });
+    const tokensPath = path.join(
+      tokensDir,
+      `${serverHash(DEFAULT_URL)}_tokens.json`
+    );
+    fs.writeFileSync(tokensPath, "{}");
+    const tied = new Date(claim.openedAt - 500);
+    fs.utimesSync(tokensPath, tied, tied);
+    assert.equal(tryRetireAuthMarker(DEFAULT_URL), false, "strict declines");
+    assert.equal(retireSatisfiedAuthMarker(DEFAULT_URL), true);
+    assert.equal(readFreshAuthMarker(DEFAULT_URL), null);
+  });
+});
+
+test("retireSatisfiedAuthMarker leaves a live unsatisfied claim standing", () => {
+  withTmpBase(() => {
+    const claim = tryClaimAuthPrompt(DEFAULT_URL);
+    assert.equal(claim.claimed, true);
+    assert.equal(retireSatisfiedAuthMarker(DEFAULT_URL), false);
+    assert.equal(readFreshAuthMarker(DEFAULT_URL).claimId, claim.claimId);
   });
 });
 

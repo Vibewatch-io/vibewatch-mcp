@@ -46,8 +46,16 @@ const emit = (text) => {
   process.stderr.write(text);
 };
 let i = 0;
+// VW_TEST_HOLD_MS keeps the child alive after the script is exhausted —
+// for tests that need bridge timers (the URL fallback) to fire while the
+// child still runs, rather than being satisfied by the on-close path.
+const holdMs = Number(process.env.VW_TEST_HOLD_MS || "0");
 const tick = () => {
   if (i >= script.length) {
+    if (holdMs > 0) {
+      setTimeout(() => process.exit(exitCode), holdMs);
+      return;
+    }
     process.exit(exitCode);
   }
   const key = script[i];

@@ -203,6 +203,20 @@ test("a prompt whose URL never arrives still records a `wait` marker", () => {
   assert.equal(markerKind(tmp), "wait");
 });
 
+test("the URL fallback fires while the child is still alive (not only on close)", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vw-mcp-open-"));
+  const done = runBridgeAsync(tmp, "prompt-no-url", {
+    VW_TEST_HOLD_MS: "9000",
+  });
+  // The 5s fallback should have recorded the `wait` marker well before the
+  // child exits at ~9s.
+  await new Promise((resolve) => setTimeout(resolve, 7_000));
+  assert.equal(markerKind(tmp), "wait", "marker present while child lives");
+  const result = await done;
+  assert.equal(result.status, 0);
+  assert.deepEqual(opens(tmp), []);
+});
+
 test("key mode never opens a browser", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vw-mcp-open-"));
   const result = runBridge(tmp, "prompt", {
