@@ -110,9 +110,10 @@ async function runBridge() {
       // Retire (rename-and-verify), never blind-clear: between the gate read
       // and this line a NEWER auth phase may have claimed the marker path,
       // and deleting its fresh `opened` claim would let a second tab open
-      // (review P1). The satisfied variant matches the gate's graced
-      // judgment, identity-locked to the observed marker, so a completed
-      // sign-in retires even on coarse-mtime filesystems (re-review P1).
+      // (review P1). The satisfied variant is watermark-judged (the token
+      // file changed since the claim) and identity-locked to the observed
+      // marker, so a completed sign-in retires even on coarse-mtime
+      // filesystems without a live claim ever reading satisfied.
       retireSatisfiedAuthMarker(serverUrl);
     } else if (gate === "suppress") {
       exitSuppressed(
@@ -424,8 +425,8 @@ async function runBridge() {
         // Retire, never blind-clear: this bridge's phase just completed
         // (tokens landed, so its marker reads satisfied), but a NEWER
         // phase's fresh `opened` claim on the same path must survive
-        // (review P1). Graced + identity-matched so a same-mtime-bucket
-        // token write still retires the finished marker (re-review P1).
+        // (review P1). Watermark-judged + identity-matched so the finished
+        // marker retires while a live claim never reads satisfied.
         retireSatisfiedAuthMarker(serverUrl);
         if (claim) claim.release();
       }
