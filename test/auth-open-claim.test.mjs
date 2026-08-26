@@ -32,6 +32,7 @@ function withTmpBase(fn) {
   } finally {
     if (saved === undefined) delete process.env.MCP_REMOTE_CONFIG_DIR;
     else process.env.MCP_REMOTE_CONFIG_DIR = saved;
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
 
@@ -253,6 +254,24 @@ test("a missing opener command reports failure", async () => {
     env: { VIBEWATCH_MCP_OPEN_CMD: "vw-definitely-missing-opener" },
   });
   assert.equal(ok, false);
+});
+
+// --- oauthSpawnGate / retirement consistency (Cubic P1) ---
+
+test("the gate never reads an orphaned live claim as satisfied on graced evidence alone", () => {
+  withTmpBase((tmp) => {
+    const require2 = () => {};
+    // Tokens at T0, claim shortly after (watermark = T0), claimant dies.
+    writeTokens(tmp, Date.now() - 30_000);
+    const claim = tryClaimAuthPrompt(DEFAULT_URL);
+    assert.equal(claim.claimed, true);
+    const { oauthSpawnGate } = require("../lib/common.js");
+    // Pre-fix the 60s grace called this satisfied while retirement
+    // declined — respawns then spawned, prompted, and were refused the
+    // tab in a zero-tab loop. Suppress is the correct issue-#4 answer.
+    assert.equal(oauthSpawnGate(DEFAULT_URL), "suppress");
+    void require2;
+  });
 });
 
 // --- extractAuthUrl ---

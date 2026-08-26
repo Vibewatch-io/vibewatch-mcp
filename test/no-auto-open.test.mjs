@@ -133,11 +133,13 @@ test("without the env flag the shim is inert", () => {
       child.on("close", () => process.exit(6));
       `,
     ],
-    {
-      encoding: "utf8",
-      env: { ...process.env, VIBEWATCH_MCP_SUPPRESS_LOG: logPath },
-      timeout: 15_000,
-    }
+    (() => {
+      // The inert premise must hold even when the ambient environment has
+      // the flag set (e.g. a test run from inside a bridge-spawned shell).
+      const env = { ...process.env, VIBEWATCH_MCP_SUPPRESS_LOG: logPath };
+      delete env.VIBEWATCH_MCP_SUPPRESS_BROWSER_OPEN;
+      return { encoding: "utf8", env, timeout: 15_000 };
+    })()
   );
   assert.equal(result.status, 5);
   assert.equal(fs.existsSync(logPath), false);
