@@ -35,5 +35,10 @@
   "dependencies": {
     "mcp-remote": "0.1.38",
     "yaml": "^2.8.3"
+  },
+  "overrides": {
+    "mcp-remote": {
+      "open": "10.2.0"
+    }
   }
 }

@@ -258,6 +258,17 @@ async function runBridge() {
   // prints it on the next line; the same line also works). Reset on
   // proxy-up along with the phase latch.
   let awaitingAuthUrl = false;
+  // How long a prompt may await its URL before the fallback records a
+  // `wait` marker anyway (see the isPrompt branch below). Well past any
+  // stream-buffering gap, well short of BRIDGE_AUTH_WAIT_MS.
+  const AUTH_URL_FALLBACK_MS = 5_000;
+  let authUrlFallbackTimer = null;
+  const clearAuthUrlFallbackTimer = () => {
+    if (authUrlFallbackTimer) {
+      clearTimeout(authUrlFallbackTimer);
+      authUrlFallbackTimer = null;
+    }
+  };
   const recordWaitAuthMarker = () => {
     if (keyMode || markerRecorded) return;
     markerRecorded = true;
@@ -345,8 +356,20 @@ async function runBridge() {
       if (isPrompt) {
         // The prompt path records its marker through the tab-open claim in
         // handleAuthPromptUrl — writing one here first would make the
-        // claimant lose its own wx race.
+        // claimant lose its own wx race. But if no URL ever gets extracted
+        // (mcp-remote reformats the prompt, an unparseable URL), NOTHING
+        // would be recorded and — with auto-open suppressed — no tab opens
+        // either, so every host respawn would re-run this dead phase with
+        // no issue-#4 suppression (review P2). A short fallback records the
+        // `wait` marker if the URL hasn't arrived; cleared on capture,
+        // proxy-up, and close.
         awaitingAuthUrl = true;
+        if (!keyMode && !authUrlFallbackTimer) {
+          authUrlFallbackTimer = setTimeout(() => {
+            if (awaitingAuthUrl) recordWaitAuthMarker();
+          }, AUTH_URL_FALLBACK_MS);
+          authUrlFallbackTimer.unref();
+        }
       } else {
         recordWaitAuthMarker();
       }
@@ -367,6 +390,7 @@ async function runBridge() {
       const url = extractAuthUrl(line);
       if (url) {
         awaitingAuthUrl = false;
+        clearAuthUrlFallbackTimer();
         handleAuthPromptUrl(url);
       }
     }
@@ -386,6 +410,7 @@ async function runBridge() {
         markerRecorded = false;
         awaitingAuthUrl = false;
         authUrlHandled = false;
+        clearAuthUrlFallbackTimer();
         clearClaimPreauthTimer();
         // Retire, never blind-clear: this bridge's phase just completed
         // (tokens landed, so its marker reads satisfied), but a NEWER
@@ -419,6 +444,12 @@ async function runBridge() {
     splitter.flush();
     if (claim) claim.release();
     clearClaimPreauthTimer();
+    // Deliberately BEFORE clearing the fallback: a child that died with a
+    // prompt still awaiting its URL should leave the `wait` marker the
+    // fallback exists for — flush() above ran the splitter one last time,
+    // and the timer (unref'd) will never fire post-exit, so record now.
+    if (awaitingAuthUrl && !keyMode) recordWaitAuthMarker();
+    clearAuthUrlFallbackTimer();
     if (authTimer) clearTimeout(authTimer);
     if (killTimer) clearTimeout(killTimer);
     if (claimStallAbort) {

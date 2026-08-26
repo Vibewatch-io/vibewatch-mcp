@@ -192,6 +192,17 @@ test("the bridge's mcp-remote spawn carries the shim: open() inside the child is
   );
 });
 
+test("a prompt whose URL never arrives still records a `wait` marker", () => {
+  // With auto-open suppressed, a URL-less prompt phase must not end with
+  // nothing on disk — respawns would re-run the dead phase forever with no
+  // issue-#4 suppression (review P2).
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vw-mcp-open-"));
+  const result = runBridge(tmp, "prompt-no-url");
+  assert.equal(result.status, 0);
+  assert.deepEqual(opens(tmp), []);
+  assert.equal(markerKind(tmp), "wait");
+});
+
 test("key mode never opens a browser", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vw-mcp-open-"));
   const result = runBridge(tmp, "prompt", {

@@ -89,6 +89,25 @@ test("the real vendored `open` package cannot reach a browser under the shim", a
   assert.equal(suppressed.length, 1, "the opener spawn must be intercepted");
 });
 
+test("the vendored `open` stays pinned to the version the shim was verified against", () => {
+  // The shim intercepts open@10.2.0's call-time `childProcess.spawn`
+  // lookup. A different 10.x could switch to execFile or a snapshotted
+  // named import and silently restore mcp-remote's auto-open — package.json
+  // pins it via overrides; this fails loudly if the pin drifts.
+  const rootPkg = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")
+  );
+  const pinned = rootPkg.overrides?.["mcp-remote"]?.open;
+  assert.ok(pinned, "package.json must pin mcp-remote's `open` via overrides");
+  const installed = JSON.parse(
+    fs.readFileSync(
+      path.join(repoRoot, "node_modules", "open", "package.json"),
+      "utf8"
+    )
+  ).version;
+  assert.equal(installed, pinned);
+});
+
 test("without the env flag the shim is inert", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vw-mcp-shim-"));
   const logPath = path.join(tmp, "suppressed.log");
