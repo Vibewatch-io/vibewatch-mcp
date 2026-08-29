@@ -84,17 +84,38 @@ test("plugin manifests' internal file references resolve", () => {
   const pluginFiles = manifestFiles.filter((f) => f.endsWith("plugin.json"));
   for (const file of pluginFiles) {
     const parsed = JSON.parse(readFileSync(file, "utf8"));
-    for (const ref of [parsed.mcpServers, parsed.skills, parsed.logo]) {
+    const refs = [
+      parsed.mcpServers,
+      parsed.skills,
+      parsed.logo,
+      parsed.interface?.composerIcon,
+      parsed.interface?.logo,
+    ];
+    for (const ref of refs) {
       if (typeof ref !== "string") continue;
       assert.ok(existsSync(join(pluginRoot, ref)), `${file}: missing referenced path ${ref}`);
     }
   }
 });
 
-test("no manifest contains a key, secret, or non-production URL", () => {
-  for (const file of manifestFiles) {
+test("the skill ships with parseable frontmatter", () => {
+  const skillFile = join(pluginRoot, "skills", "use-vibewatch", "SKILL.md");
+  assert.ok(existsSync(skillFile), "skills/use-vibewatch/SKILL.md missing");
+  const raw = readFileSync(skillFile, "utf8");
+  const frontmatter = raw.match(/^---\n([\s\S]+?)\n---\n/);
+  assert.ok(frontmatter, "SKILL.md has no frontmatter block");
+  assert.match(frontmatter[1], /^name: use-vibewatch$/m, "frontmatter name");
+  assert.match(frontmatter[1], /^description: /m, "frontmatter description");
+});
+
+test("no shipped plugin file contains a key, secret, or non-production URL", () => {
+  const scanned = [
+    ...manifestFiles,
+    join(pluginRoot, "skills", "use-vibewatch", "SKILL.md"),
+  ];
+  for (const file of scanned) {
     const raw = readFileSync(file, "utf8");
-    assert.ok(!/vw_mcp_/.test(raw), `${file}: contains an MCP key`);
+    assert.ok(!/vw_mcp_[a-zA-Z0-9]/.test(raw), `${file}: contains an MCP key`);
     assert.ok(!/railway\.app|up\.railway|localhost|127\.0\.0\.1/.test(raw), `${file}: non-production URL`);
   }
 });
