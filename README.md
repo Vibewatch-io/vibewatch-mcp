@@ -98,6 +98,11 @@ Until the marketplace listings are live, Claude Code users can install straight 
 /plugin install vibewatch@vibewatch
 ```
 
+The plugin and the `connect-buzz` flow register the same server under the same `vibewatch`
+name — pick one per machine. If you've already run `connect-buzz`, either keep that and skip
+the plugin, or remove the user-scope entry first (`claude mcp remove --scope user vibewatch`)
+so the seven tools aren't mounted twice.
+
 Releasing a plugin change: bump the version in every `plugin.json` (the test enforces
 equality), merge, then open a SHA-bump PR against `xai-org/plugin-marketplace` (their catalog
 pins a commit, so Grok installs don't see changes until the pin advances). Other marketplaces

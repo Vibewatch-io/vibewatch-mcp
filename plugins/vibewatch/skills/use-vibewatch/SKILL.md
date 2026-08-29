@@ -53,12 +53,17 @@ Tool parameters are self-describing; read each tool's own description for specif
 concrete numbers from the response, never invented ones.
 
 **Investigate a change.** `get_sentiment_timeseries` to find when the shift happened, then
-`get_daily_insights` and `search_messages` scoped to that window to find out what the community
-was reacting to. Quote real messages as evidence, briefly. Note: days without generated insights
-are absent from the timeseries, not zero — don't read a gap as a score of zero.
+`search_messages` with `start_date`/`end_date` scoped to that window to find out what the
+community was reacting to. If the shift is within the last week, `get_daily_insights` adds the
+generated highlights — but it only covers recent days anchored to now (no date parameters), so
+for anything older, message search is the evidence path. Quote real messages as evidence,
+briefly. Note: days without generated insights are absent from the timeseries, not zero — don't
+read a gap as a score of zero.
 
 **Weekly brief.** `get_reports` for the latest report and summarize from it. The report is the
-generated narrative; don't re-derive one from raw messages when a report already exists.
+generated narrative; don't re-derive one from raw messages when a report already exists. Check
+`worth_addressing_status` before summarizing that section: when it is `"unavailable"`, say the
+analysis didn't run — an empty worth-addressing list must not be read as a clean week.
 
 **Market backdrop.** `get_market_context` alongside the org's trend when the user asks whether
 the vibe tracks the market. Describe what moved together; this is descriptive context, not a

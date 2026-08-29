@@ -1,8 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { DEFAULT_URL } = require("../lib/common.js");
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = join(repoRoot, "plugins", "vibewatch");
@@ -10,7 +14,7 @@ const pluginRoot = join(repoRoot, "plugins", "vibewatch");
 const CANONICAL_SERVERS = {
   vibewatch: {
     type: "http",
-    url: "https://api.vibewatch.io/mcp/",
+    url: DEFAULT_URL,
   },
 };
 
@@ -59,6 +63,32 @@ test("every plugin.json carries the same version and name", () => {
     assert.equal(parsed.license, "Apache-2.0", file);
   }
   assert.equal(versions.size, 1, `plugin versions drifted: ${[...versions]}`);
+});
+
+test("marketplace manifests point at directories that exist", () => {
+  const marketplaceFiles = manifestFiles.filter((f) => f.endsWith("marketplace.json"));
+  assert.equal(marketplaceFiles.length, 3, "expected the three root marketplace manifests");
+  for (const file of marketplaceFiles) {
+    const parsed = JSON.parse(readFileSync(file, "utf8"));
+    for (const plugin of parsed.plugins) {
+      const ref = typeof plugin.source === "string" ? plugin.source : plugin.source.path;
+      assert.ok(ref, `${file}: plugin entry has no source path`);
+      const resolved = join(repoRoot, ref);
+      assert.ok(existsSync(join(resolved, "skills")), `${file}: ${ref} missing skills/`);
+      assert.ok(existsSync(join(resolved, ".mcp.json")), `${file}: ${ref} missing .mcp.json`);
+    }
+  }
+});
+
+test("plugin manifests' internal file references resolve", () => {
+  const pluginFiles = manifestFiles.filter((f) => f.endsWith("plugin.json"));
+  for (const file of pluginFiles) {
+    const parsed = JSON.parse(readFileSync(file, "utf8"));
+    for (const ref of [parsed.mcpServers, parsed.skills, parsed.logo]) {
+      if (typeof ref !== "string") continue;
+      assert.ok(existsSync(join(pluginRoot, ref)), `${file}: missing referenced path ${ref}`);
+    }
+  }
 });
 
 test("no manifest contains a key, secret, or non-production URL", () => {
