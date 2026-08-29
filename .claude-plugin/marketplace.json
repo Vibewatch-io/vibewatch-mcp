@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "vibewatch",
+  "description": "Give Claude Code access to your community's vibe — the hosted Vibewatch MCP server and skill for reading community sentiment, searching messages, and pulling weekly reports.",
+  "owner": {
+    "name": "Vibewatch",
+    "email": "support@vibewatch.io"
+  },
+  "plugins": [
+    {
+      "name": "vibewatch",
+      "description": "Give Claude Code access to your community's vibe. Connects Claude to your Vibewatch organization through the hosted Vibewatch MCP server — sentiment overview, daily trend, message search, daily insights, weekly reports, and market context, all read-only. Sign in with your Vibewatch account.",
+      "author": {
+        "name": "Vibewatch"
+      },
+      "source": "./plugins/vibewatch",
+      "category": "analytics",
+      "homepage": "https://vibewatch.io"
+    }
+  ]
+}

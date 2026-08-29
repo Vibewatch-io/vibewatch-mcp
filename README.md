@@ -81,6 +81,28 @@ The bridge never puts the key on a process argument list — it hands `mcp-remot
 | `get_market_context` | Market backdrop for sentiment reads |
 | `get_organization` | Org and connected-source details |
 
+## Agent marketplace plugin
+
+`plugins/vibewatch/` packages Vibewatch as an agent plugin — the hosted MCP server plus a
+`use-vibewatch` skill — in the layout agent marketplaces resolve (xAI/Grok, Claude Code, Cursor,
+and OpenAI Codex manifests, with marketplace manifests at the repo root). The plugin declares
+exactly one network endpoint, `https://api.vibewatch.io/mcp/`, and carries no credentials: auth
+is the server's standard MCP OAuth sign-in (or a `vw_mcp_` key via the stdio bridge for headless
+use). It ships no hooks and no scripts. The plugin is versioned independently of this npm
+package; `test/plugin-manifests.test.mjs` keeps the manifests in lockstep.
+
+Until the marketplace listings are live, Claude Code users can install straight from the repo:
+
+```
+/plugin marketplace add Vibewatch-io/vibewatch-mcp
+/plugin install vibewatch@vibewatch
+```
+
+Releasing a plugin change: bump the version in every `plugin.json` (the test enforces
+equality), merge, then open a SHA-bump PR against `xai-org/plugin-marketplace` (their catalog
+pins a commit, so Grok installs don't see changes until the pin advances). Other marketplaces
+follow their own update flows.
+
 ## License
 
 Apache-2.0

@@ -1,0 +1,43 @@
+{
+  "name": "vibewatch",
+  "version": "1.0.0",
+  "description": "Give Codex access to your community's vibe. Connects Codex to your Vibewatch organization through the hosted Vibewatch MCP server — sentiment overview, daily trend, message search, daily insights, weekly reports, and market context, all read-only. Sign in with your Vibewatch account.",
+  "author": {
+    "name": "Vibewatch",
+    "email": "support@vibewatch.io",
+    "url": "https://vibewatch.io"
+  },
+  "homepage": "https://vibewatch.io",
+  "repository": "https://github.com/Vibewatch-io/vibewatch-mcp",
+  "license": "Apache-2.0",
+  "keywords": [
+    "vibewatch",
+    "vibewatch mcp",
+    "community vibe",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Vibewatch",
+    "shortDescription": "Your community's vibe, inside your agent.",
+    "longDescription": "Vibewatch is community intelligence for web3 teams: it reads your community across Discord, Telegram, X, and more, scores the vibe, and writes the reports. This plugin connects your agent to your Vibewatch organization through the hosted Vibewatch MCP server — sentiment overview, daily trend, message search, daily insights, weekly reports, and market context, all read-only. Sign in with your Vibewatch account.",
+    "developerName": "Vibewatch",
+    "category": "Analytics",
+    "capabilities": [
+      "Interactive"
+    ],
+    "websiteURL": "https://vibewatch.io",
+    "privacyPolicyURL": "https://vibewatch.io/privacy",
+    "termsOfServiceURL": "https://vibewatch.io/terms",
+    "defaultPrompt": [
+      "What's the vibe in my community this week?",
+      "Why did our community sentiment dip?",
+      "Summarize our latest weekly Vibewatch report."
+    ],
+    "brandColor": "#00C4A1",
+    "composerIcon": "./assets/logo.svg",
+    "logo": "./assets/logo.svg",
+    "screenshots": []
+  }
+}

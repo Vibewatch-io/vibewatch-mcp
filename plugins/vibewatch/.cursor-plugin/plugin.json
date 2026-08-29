@@ -1,0 +1,28 @@
+{
+  "name": "vibewatch",
+  "displayName": "Vibewatch",
+  "description": "Give Cursor access to your community's vibe. Connects Cursor to your Vibewatch organization through the hosted Vibewatch MCP server — sentiment overview, daily trend, message search, daily insights, weekly reports, and market context, all read-only. Sign in with your Vibewatch account. Community intelligence for web3 teams.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Vibewatch",
+    "email": "support@vibewatch.io"
+  },
+  "publisher": "Vibewatch",
+  "homepage": "https://vibewatch.io",
+  "repository": "https://github.com/Vibewatch-io/vibewatch-mcp",
+  "license": "Apache-2.0",
+  "keywords": [
+    "vibewatch",
+    "vibewatch mcp",
+    "community vibe",
+    "mcp"
+  ],
+  "category": "Analytics",
+  "tags": [
+    "mcp",
+    "skills",
+    "vibewatch"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.cursor-plugin/mcp.json"
+}
