@@ -71,7 +71,7 @@ test("marketplace manifests point at directories that exist", () => {
   for (const file of marketplaceFiles) {
     const parsed = JSON.parse(readFileSync(file, "utf8"));
     for (const plugin of parsed.plugins) {
-      const ref = typeof plugin.source === "string" ? plugin.source : plugin.source.path;
+      const ref = typeof plugin.source === "string" ? plugin.source : plugin.source?.path;
       assert.ok(ref, `${file}: plugin entry has no source path`);
       const resolved = join(repoRoot, ref);
       assert.ok(existsSync(join(resolved, "skills")), `${file}: ${ref} missing skills/`);
@@ -115,7 +115,7 @@ test("no shipped plugin file contains a key, secret, or non-production URL", () 
   ];
   for (const file of scanned) {
     const raw = readFileSync(file, "utf8");
-    assert.ok(!/vw_mcp_[a-zA-Z0-9]/.test(raw), `${file}: contains an MCP key`);
+    assert.ok(!/vw_mcp_[A-Za-z0-9._-]/.test(raw), `${file}: contains an MCP key`);
     assert.ok(!/railway\.app|up\.railway|localhost|127\.0\.0\.1/.test(raw), `${file}: non-production URL`);
   }
 });
