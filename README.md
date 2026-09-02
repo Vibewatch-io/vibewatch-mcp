@@ -2,7 +2,7 @@
 
 Connect any MCP client to your [Vibewatch](https://vibewatch.io) community-sentiment data.
 
-Vibewatch's MCP server exposes seven read-only tools over your organization's data — sentiment overview, sentiment trend, message search, daily insights, weekly reports, market context, and org details. This package is a thin stdio bridge to that server: it wraps [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) with the Vibewatch server URL and auth handling built in, plus a one-command setup for [Buzz](https://github.com/block/buzz) agents.
+Vibewatch's MCP server exposes eight read-only tools — seven over your organization's data (sentiment overview, sentiment trend, message search, daily insights, weekly reports, market context, and org details) plus public Stacks ecosystem sentiment. This package is a thin stdio bridge to that server: it wraps [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) with the Vibewatch server URL and auth handling built in, plus a one-command setup for [Buzz](https://github.com/block/buzz) agents.
 
 ## Use with Buzz
 
@@ -80,6 +80,7 @@ The bridge never puts the key on a process argument list — it hands `mcp-remot
 | `get_reports` | Weekly report content |
 | `get_market_context` | Market backdrop for sentiment reads |
 | `get_organization` | Org and connected-source details |
+| `get_stacks_ecosystem_sentiment` | Stacks ecosystem-wide vibe — public data, not this org's |
 
 ## Agent marketplace plugin
 
@@ -101,7 +102,7 @@ Until the marketplace listings are live, Claude Code users can install straight 
 The plugin and the `connect-buzz` flow register the same server under the same `vibewatch`
 name — pick one per machine. If you've already run `connect-buzz`, either keep that and skip
 the plugin, or remove the user-scope entry first (`claude mcp remove --scope user vibewatch`)
-so the seven tools aren't mounted twice.
+so the same tools aren't mounted twice.
 
 Releasing a plugin change: bump the version in every `plugin.json` (the test enforces
 equality), merge, then open a SHA-bump PR against `xai-org/plugin-marketplace` (their catalog
