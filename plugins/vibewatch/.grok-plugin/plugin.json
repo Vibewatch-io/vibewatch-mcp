@@ -1,0 +1,20 @@
+{
+  "name": "vibewatch",
+  "version": "1.0.0",
+  "description": "Give Grok access to your community's vibe. Connects Grok to your Vibewatch organization through the hosted Vibewatch MCP server — sentiment overview, daily trend, message search, daily insights, weekly reports, and market context, all read-only. Sign in with your Vibewatch account. Community intelligence for web3 teams.",
+  "author": {
+    "name": "Vibewatch",
+    "email": "support@vibewatch.io"
+  },
+  "homepage": "https://vibewatch.io",
+  "repository": "https://github.com/Vibewatch-io/vibewatch-mcp",
+  "license": "Apache-2.0",
+  "mcpServers": "./.grok-plugin/mcp.json",
+  "keywords": [
+    "vibewatch",
+    "vibewatch mcp",
+    "vibewatch report",
+    "community vibe"
+  ],
+  "logo": "assets/logo.svg"
+}
