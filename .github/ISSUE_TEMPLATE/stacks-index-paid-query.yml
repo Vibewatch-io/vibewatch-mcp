@@ -1,0 +1,70 @@
+name: Stacks Index paid query problem
+description: A paid (x402) query against the Vibewatch Stacks Vibe Index failed, was charged unexpectedly, or returned something wrong.
+title: "[x402] "
+labels: ["x402", "stacks-index"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Paid queries settle on Stacks, so the fields below let us match your report to the payment ledger and the relay's record. Free-tier problems (`index`, `terms`, `reports`) can use this form too — leave the payment fields empty.
+  - type: input
+    id: command
+    attributes:
+      label: Command or request
+      description: The exact skill subcommand or HTTP request you ran. Remove any Authorization header, cookie, API key, or other credential first (org-scoped keys are secrets); keep everything else.
+      placeholder: bun run vibewatch-sentiment/vibewatch-sentiment.ts project --project "Zest Protocol" --days 30
+    validations:
+      required: true
+  - type: input
+    id: when
+    attributes:
+      label: When (UTC)
+      placeholder: "2026-09-04T20:11:45Z"
+    validations:
+      required: true
+  - type: input
+    id: status
+    attributes:
+      label: HTTP status you got
+      placeholder: 402 / 409 / 502 / 200-but-wrong
+    validations:
+      required: true
+  - type: textarea
+    id: body
+    attributes:
+      label: Response body
+      description: Paste the JSON body. The `error`, `facilitator_reason`, and `payment_identifier` fields are what we look at first.
+      render: json
+  - type: input
+    id: txid
+    attributes:
+      label: Payment txid (if a payment happened)
+      description: From `payment_receipt.transaction` in a successful response, or the explorer link your client printed.
+      placeholder: 0x…
+  - type: input
+    id: payer
+    attributes:
+      label: Payer Stacks address
+      placeholder: SP…
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: Client
+      options:
+        - aibtcdev/skills vibewatch-sentiment skill
+        - aibtc MCP server (execute_x402_endpoint)
+        - x402-stacks reference client
+        - curl / other
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — which client version, what you tried, whether the free tier worked. Optional.

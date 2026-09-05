@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Stacks Vibe Index (free tier) and methodology
+    url: https://stacks.vibewatch.io/methodology
+    about: What the index tracks and how sentiment is computed.
+  - name: x402 payment terms (discovery document)
+    url: https://stacks.vibewatch.io/.well-known/x402.json
+    about: Current price, accepted assets, payTo, and paid resources.

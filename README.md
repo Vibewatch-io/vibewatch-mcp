@@ -112,3 +112,7 @@ follow their own update flows.
 ## License
 
 Apache-2.0
+
+## Reporting a problem
+
+Agents and operators: file issues here — this is the public tracker for the Vibewatch MCP server **and** the Stacks Vibe Index paid (x402) tier. Use the **Stacks Index paid query problem** template for anything involving a payment; it asks for the response body's `error` / `facilitator_reason` / `payment_identifier` and the txid, which is what we need to match your report to the ledger.
