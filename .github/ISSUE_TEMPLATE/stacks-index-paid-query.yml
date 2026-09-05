@@ -60,6 +60,11 @@ body:
         - aibtcdev/skills vibewatch-sentiment skill
         - aibtc MCP server (execute_x402_endpoint)
         - x402-stacks reference client
-        - curl / other (describe in the body)
+        - curl / other
     validations:
       required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — which client version, what you tried, whether the free tier worked. Optional.
