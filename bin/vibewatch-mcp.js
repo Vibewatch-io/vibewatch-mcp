@@ -193,7 +193,7 @@ async function runBridge() {
       ...bridgeArgs({ keyMode, serverUrl, passthrough }),
     ],
     {
-      stdio: ["inherit", "inherit", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, VIBEWATCH_MCP_SUPPRESS_BROWSER_OPEN: "1" },
     }
   );
@@ -259,6 +259,36 @@ async function runBridge() {
   let markerRecorded = false;
   // Armed by the prompt line: the authorize URL follows (real mcp-remote
   // prints it on the next line; the same line also works). Reset on
+
+  // --- x402 Proxy Logic Start ---
+  let stdoutBuffer = "";
+  const TRIGGER = "X402_STX_REQUIRED";
+
+  // Pipe stdin: User -> Child
+  process.stdin.on('data', (data) => {
+    child.stdin.write(data);
+  });
+
+  // Pipe stdout: Child -> User (with buffered x402 interception)
+  child.stdout.on('data', (data) => {
+    const chunk = data.toString();
+    stdoutBuffer += chunk;
+
+    if (stdoutBuffer.includes(TRIGGER)) {
+      process.stderr.write("[x402-bridge] Detected STX requirement. Injecting explicit session identifier...
+");
+      child.stdin.write("STX_SESSION_EXPLICIT_001
+");
+      // Clear buffer after handling to avoid double injection
+      stdoutBuffer = "";
+    } else if (stdoutBuffer.length > 1024) {
+      // Prevent buffer from growing infinitely if trigger is never found
+      stdoutBuffer = stdoutBuffer.slice(-TRIGGER.length);
+    }
+    process.stdout.write(data);
+  });
+  // --- x402 Proxy Logic End ---
+
   // proxy-up along with the phase latch.
   let awaitingAuthUrl = false;
   // How long a prompt may await its URL before the fallback records a
