@@ -165,10 +165,17 @@ Every paid response is the same envelope: `schema_version`, `tier: "paid"`, `as_
 ### Unscored projects
 
 A panel project whose free-index `score` is `null` (today `boom` and `jing-swap`) has no scored
-days, so its paid series would be empty. Those slugs are refused before payment (rolling out).
-Until that is live, the index still issues the `402` and, once paid, answers `200` with
-`series: []` and `latest.score: null`, and the query is charged. Check `score` in the free index
-before paying.
+days, so there is no paid series to sell. The index refuses such a slug for free, before issuing
+any `402`, so nothing can be charged:
+
+```
+GET /api/v1/public/stacks-index/pro/projects/boom
+HTTP 422
+{"detail":{"error":"project_not_scored","slug":"boom","days":90}}
+```
+
+Scored slugs answer the usual `402`; slugs that are not on the panel answer `404`. Check `score`
+in the free index first to skip the round-trip.
 
 ### How to pay
 
