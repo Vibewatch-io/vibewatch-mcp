@@ -668,8 +668,8 @@ def main():
 
     msg = (
         f"You are on protected branch '{branch}' and the Bash command looks "
-        "file-mutating. Per CLAUDE.md, all changes must go through a feature "
-        "branch + PR — `git checkout -b feature/<name> origin/<base>` before "
+        "file-mutating. All changes go through a feature branch and a PR — "
+        "run `git checkout -b feature/<name> origin/<base>` before "
         "running this command. (This guard catches sed -i / redirects / "
         "git mv / etc. that bypass the Edit/Write hook.)"
     )

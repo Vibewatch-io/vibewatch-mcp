@@ -54,7 +54,7 @@ json_escape() {
 }
 
 if [ "$b" = "main" ]; then
-  msg="You are on protected branch $b. Per CLAUDE.md, all changes must go through pull requests — create a feature branch (git checkout -b <name>) before editing files. Do not commit or push on this branch."
+  msg="You are on protected branch $b. All changes go through a feature branch and a PR — create one (git checkout -b <name>) before editing files. Do not commit or push on this branch."
   emit "$(json_escape "$msg")"
   exit 0
 fi
