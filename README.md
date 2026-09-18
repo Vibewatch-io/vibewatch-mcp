@@ -9,7 +9,7 @@ Vibewatch's MCP server exposes eight read-only tools — seven over your organiz
 Claude connects to the hosted server directly, so there's nothing to install:
 
 - **Claude (web, desktop, Cowork):** add a custom connector in Claude's connector settings with the URL `https://api.vibewatch.io/mcp/`, then click **Connect**.
-- **Claude Code:** run `claude mcp add --transport http vibewatch https://api.vibewatch.io/mcp/`, then `/mcp` to sign in.
+- **Claude Code:** run `claude mcp add --transport http vibewatch https://api.vibewatch.io/mcp/`, then `/mcp` to sign in. If you've already run `connect-buzz` or installed the [plugin](#agent-marketplace-plugin), skip this: Claude Code already has Vibewatch, and adding it again mounts the same tools twice.
 
 Connecting opens a Vibewatch sign-in page. Sign in, pick the organization Claude can read, and approve. Claude can then read that organization's data through the eight [tools](#tools) below, none of which change anything.
 
