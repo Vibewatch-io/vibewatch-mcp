@@ -1,3 +1,9 @@
 node_modules/
 *.log
 .DS_Store
+
+# Claude Code: the team-shared config is tracked, everything else under
+# `.claude/` (session worktrees, `settings.local.json`) is local-only.
+.claude/*
+!.claude/hooks/
+!.claude/settings.json
