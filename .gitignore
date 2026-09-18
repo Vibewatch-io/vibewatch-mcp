@@ -1,3 +1,15 @@
 node_modules/
 *.log
 .DS_Store
+
+# Claude Code: the team-shared config is tracked, everything else under
+# `.claude/` (session worktrees, `settings.local.json`) is local-only.
+.claude/*
+!.claude/hooks/
+!.claude/settings.json
+__pycache__/
+
+# The working guide and the review calibration are local-only: this repo is
+# public and how we work here is not.
+CLAUDE.md
+REVIEW.md
