@@ -58,10 +58,23 @@ EDIT_PATTERNS = [
     r"\bchmod\s+",
     r"\bchown\s+",
     r"(?<![\w.-])(?:dd|rmdir|shred|unlink|rsync)\s+",
-    r"\bgit\s+(?:add|rm|mv|reset|stash|clean|branch\s+-D)\b",
+    r"\bgit\s+(?:add|rm|mv|reset|stash|clean|apply|am|restore|branch\s+-D)\b",
     r"\bcat\s+<<",                                       # heredoc into command
+    # `patch` and `install` only in command position: a bare \binstall\b would
+    # fire on `npm install` / `pip install -r ...`, which write nothing here.
+    r"(?:^|[;&|(]\s*)(?:sudo\s+)?(?:patch|install)\s+",
 ]
 _EDIT_RE = re.compile("|".join(EDIT_PATTERNS))
+
+
+# Commands whose effect always lands in THIS worktree even when every path
+# operand points outside it: the patch file in /tmp is the input, not the
+# target. They skip the scratch-space allowance in main().
+IN_WORKTREE_EFFECT_PATTERNS = [
+    r"\bgit\s+(?:apply|am|restore)\b",
+    r"(?:^|[;&|(]\s*)(?:sudo\s+)?patch\s+",
+]
+_IN_WORKTREE_EFFECT_RE = re.compile("|".join(IN_WORKTREE_EFFECT_PATTERNS))
 
 
 # Path-like token shapes we recognize. Used to decide whether a command's
@@ -641,7 +654,9 @@ def main():
     # clearly outside the worktree (mkdir /tmp/foo, touch ~/scratch.txt,
     # cp file /tmp/dest, etc.). The worktree is what matters — scratch-
     # space operations don't risk leaving uncommitted changes on main.
-    if _targets_clearly_outside_repo(command, project_dir):
+    if not _IN_WORKTREE_EFFECT_RE.search(command) and _targets_clearly_outside_repo(
+        command, project_dir
+    ):
         sys.exit(0)
 
     msg = (
@@ -829,7 +844,24 @@ def _selftest():
         ("npm install", False),
         ("grep -n install package.json", False),
         ("pip install -r requirements.txt", False),
+        ("brew install jq", False),
         ("ls -la", False),
+        ("git apply /tmp/change.patch", True),
+        ("git am /tmp/0001.patch", True),
+        ("git restore --source=HEAD~1 README", True),
+        ("patch -p1 < /tmp/change.patch", True),
+        ("install -m 644 /tmp/generated README", True),
+        ("cd sub && install /tmp/a b", True),
+        ("sudo install /tmp/a README", True),
+    ]
+    # Patch application mutates the worktree whatever its operands look like.
+    effect_cases = [
+        ("git apply /tmp/change.patch", True),
+        ("patch -p1 < /tmp/change.patch", True),
+        ("git restore README", True),
+        ("cp /tmp/a /tmp/b", False),
+        ("npm install", False),
+        ("echo dispatch a patch > /tmp/o", False),
     ]
     failures = []
     for command, expected in cases:
@@ -844,10 +876,16 @@ def _selftest():
         if got != expected:
             failures.append((command, expected, got))
         print(f"  [{status}] edit={got!s:5} expected={expected!s:5}  {command}")
+    for command, expected in effect_cases:
+        got = bool(_IN_WORKTREE_EFFECT_RE.search(command))
+        status = "ok" if got == expected else "FAIL"
+        if got != expected:
+            failures.append((command, expected, got))
+        print(f"  [{status}] effect={got!s:5} expected={expected!s:5}  {command}")
     if failures:
         print(f"\n{len(failures)} selftest case(s) failed.")
         sys.exit(1)
-    print(f"\nAll {len(cases) + len(edit_cases)} selftest cases passed.")
+    print(f"\nAll {len(cases) + len(edit_cases) + len(effect_cases)} selftest cases passed.")
     sys.exit(0)
 
 
