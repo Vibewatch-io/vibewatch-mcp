@@ -4,6 +4,25 @@ Connect any MCP client to your [Vibewatch](https://vibewatch.io) community-senti
 
 Vibewatch's MCP server exposes eight read-only tools — seven over your organization's data (sentiment overview, sentiment trend, message search, daily insights, weekly reports, market context, and org details) plus public Stacks ecosystem sentiment. This package is a thin stdio bridge to that server: it wraps [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) with the Vibewatch server URL and auth handling built in, plus a one-command setup for [Buzz](https://github.com/block/buzz) agents.
 
+## Use with Claude
+
+Claude connects to the hosted server directly, so there's nothing to install:
+
+- **Claude (web, desktop, Cowork):** add a custom connector in Claude's connector settings with the URL `https://api.vibewatch.io/mcp/`, then click **Connect**.
+- **Claude Code:** run `claude mcp add --transport http vibewatch https://api.vibewatch.io/mcp/`, then `/mcp` to sign in. If you've already run `connect-buzz` or installed the [plugin](#agent-marketplace-plugin), skip this: Claude Code already has Vibewatch, and adding it again mounts the same tools twice.
+
+Connecting opens a Vibewatch sign-in page. Sign in, pick the organization Claude can read, and approve. Claude can then read that organization's data through the eight [tools](#tools) below, none of which change anything.
+
+Before you connect:
+
+- MCP access is opt-in per organization. An owner or admin enables it in [app.vibewatch.io](https://app.vibewatch.io) → **Settings → API Access**. After that, any member of the organization can connect, including viewers.
+- It's available on every plan, including the free trial.
+- Revoke Claude's access any time from **Settings → API Access**, or disconnect it in Claude.
+
+Try "What's the vibe in my community this week?", "Summarize our latest weekly Vibewatch report", or "Find negative Discord messages from the last 7 days."
+
+ChatGPT connects to the same server: install Vibewatch from the [ChatGPT plugin directory](https://chatgpt.com/plugins/plugin_asdk_app_6a98a5094158819184a2707539f04bd7).
+
 ## Use with Buzz
 
 Two commands, one browser approval:
