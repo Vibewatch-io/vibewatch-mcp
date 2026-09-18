@@ -137,9 +137,9 @@ Terms come from the discovery document at `https://api.vibewatch.io/.well-known/
 
 | Resource | Returns |
 |---|---|
-| `/api/v1/public/stacks-index/pro/projects/{slug}` | One panel project's daily composite series (`?days=`, up to 90) with its current score and week-over-week change. `slug` is the free index's `projects[].slug` verbatim; live slugs carry a suffix (e.g. `zest-protocol-3672`). |
+| `/api/v1/public/stacks-index/pro/projects/{slug}` | One panel project's daily composite series (`?days=`, up to 90). The paid part is the series; the response also repeats the project's current score and week-over-week change, which the free index already publishes. `slug` is the free index's `projects[].slug` verbatim; live slugs carry a suffix (e.g. `zest-protocol-3672`). |
 | `/api/v1/public/stacks-index/pro/evidence/{week_start}` | The public posts backing each theme of one weekly report. `week_start` is a value from `reports`. |
-| `/api/v1/public/stacks-index/pro/delta?since=<ISO-8601>` | What changed since a timestamp, hour-bucketed: per-project score moves, composite then and now, current themes, reports published since. `since` older than 90 days is clamped. |
+| `/api/v1/public/stacks-index/pro/delta?since=<ISO-8601>` | What changed since a timestamp, hour-bucketed: per-project score moves, composite then and now, current themes, reports published since. `since` is a UTC timestamp (`2026-09-15T00:00:00Z`) or a date (`2026-09-15`, read as midnight UTC); anything else is a 400 `invalid_since`. `since` older than 90 days is clamped. |
 
 One request is one payment; running the same query again pays again. Read the discovery
 document before the first paid call: when the paid tier is switched off it serves empty
