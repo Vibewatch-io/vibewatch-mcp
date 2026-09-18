@@ -29,8 +29,13 @@ import sys
 from pathlib import Path
 
 
-# Commands that write to / mutate files. Matched against the bash command
-# string; conservative — we accept some misses to keep false positives low.
+# Commands that write to / mutate files. Matched against the raw bash command
+# string, so the match is neither quote- nor command-position-aware except
+# where a pattern says so: a `>` inside a quoted argument, or `rm ` inside a
+# grep pattern, reads as an edit. On the one branch this guard is active for
+# that over-block is the cheap direction — the answer is always "work on a
+# branch" — while the interpreter escapes it cannot see at all (`python3 -c`,
+# `node -e`) are why this is a reminder, not a security boundary.
 #
 # Intentionally NOT blocked: `git checkout` (with or without -b/-B) and
 # `git switch`. These are the escape hatch from main — the protection
@@ -61,7 +66,10 @@ EDIT_PATTERNS = [
     r"\bgit\s+(?:add|rm|mv|reset|stash|clean|apply|am|restore|branch\s+-D)\b",
     r"\bcat\s+<<",                                       # heredoc into command
     # `patch` and `install` only in command position: a bare \binstall\b would
-    # fire on `npm install` / `pip install -r ...`, which write nothing here.
+    # fire on `npm install` / `pip install -r ...`. Those are deliberately let
+    # through even though `npm install` can rewrite package-lock.json — a
+    # dependency install is too common to block, and the lockfile change shows
+    # up in `git status` before anything can be pushed.
     r"(?:^|[;&|(]\s*)(?:sudo\s+)?(?:patch|install)\s+",
 ]
 _EDIT_RE = re.compile("|".join(EDIT_PATTERNS))
@@ -227,8 +235,7 @@ def _bare_inrepo_operands(command):
     or a `.extension`. The motivating case is the `README` in
     `cp /tmp/x README`: the only regex-recognized token is the outside
     `/tmp/x`, so `_targets_clearly_outside_repo` would wrongly conclude every
-    target is outside and let an in-repo write through on a protected branch
-    (#832).
+    target is outside and let an in-repo write through on a protected branch.
 
     Tokenizes with shlex and returns the bare operands — but ONLY for commands
     that take file-path operands (`cp`, `mv`, `touch`, `git`, …); a bare word
@@ -675,7 +682,7 @@ def main():
 
 def _selftest():
     """`python bash_edit_guard.py --selftest` — covers the bare-basename gap
-    (#832) plus the documented scratch-space allow-throughs. project_dir is a
+    plus the documented scratch-space allow-throughs. project_dir is a
     fixed non-existent path; Path.resolve() doesn't require it to exist."""
     proj = "/repo"
     # (command, expected_outside)

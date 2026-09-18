@@ -7,3 +7,4 @@ node_modules/
 .claude/*
 !.claude/hooks/
 !.claude/settings.json
+__pycache__/

@@ -52,7 +52,9 @@ git diff --check
 There is **no linter, no formatter, and no CI workflow in this repo**: the test suite plus the
 review roster is the entire gate, so an unrun suite is an unverified change. `engines` is Node
 `>=18` — local dev may be far newer, so don't use syntax or APIs that Node 18 lacks. Hook changes
-get `bash -n` / `python3 -m py_compile`.
+get `bash -n .claude/hooks/branch-reminder.sh` and
+`python3 .claude/hooks/bash_edit_guard.py --selftest`, which is the guard's real behavioral
+coverage — syntax checks alone prove nothing about what it blocks.
 
 Run the gates **once on the assembled batch**, not after every edit; reuse a green run whose
 relevant inputs and tree are unchanged, and otherwise rerun only what the change affects. Parts of

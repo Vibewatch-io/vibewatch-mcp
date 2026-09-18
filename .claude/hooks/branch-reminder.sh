@@ -25,7 +25,7 @@ project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 target_path=$(printf '%s' "$stdin" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null || echo "")
 if [ -n "$target_path" ] && [ -n "$project_dir" ]; then
   # Claude Code sometimes passes file_path as a project-relative string
-  # (e.g. "backend/app/foo.py") rather than an absolute path. Anchor any
+  # (e.g. "lib/common.js") rather than an absolute path. Anchor any
   # non-absolute value under project_dir before the prefix check or the
   # case-glob silently fails and we skip the branch reminder.
   case "$target_path" in
