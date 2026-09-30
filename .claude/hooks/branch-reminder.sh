@@ -33,10 +33,10 @@ if [ -n "$target_path" ] && [ -n "$project_dir" ]; then
     /*) ;;
     *) target_path="${base_dir}/${target_path}" ;;
   esac
-  # Collapse `..` segments before the prefix check: a relative outside-project
-  # edit like `../scratch/note.md` anchors to `$project_dir/../scratch/…`,
-  # which the glob below would wrongly accept as inside. The file may not
-  # exist yet, so normalize lexically instead of resolving on disk.
+  # Collapse `..` segments before the prefix check: a relative edit like
+  # `../scratch/note.md` anchors to `$base_dir/../scratch/…`, which the glob
+  # below would judge by its unnormalized prefix. The file may not exist
+  # yet, so normalize lexically instead of resolving on disk.
   target_path=$(python3 -c 'import os, sys; print(os.path.normpath(sys.argv[1]))' "$target_path" 2>/dev/null || printf '%s' "$target_path")
   project_dir=$(python3 -c 'import os, sys; print(os.path.normpath(sys.argv[1]))' "$project_dir" 2>/dev/null || printf '%s' "$project_dir")
   case "$target_path" in
