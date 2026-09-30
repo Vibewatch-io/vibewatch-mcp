@@ -17,15 +17,6 @@
             "command": "bash \"${CLAUDE_PROJECT_DIR:-$PWD}/.claude/hooks/branch-reminder.sh\""
           }
         ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-$PWD}/.claude/hooks/bash_edit_guard.py\""
-          }
-        ]
       }
     ]
   }
