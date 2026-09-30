@@ -10,27 +10,28 @@ set -eu
 
 stdin=$(cat)
 session_id=$(printf '%s' "$stdin" | jq -r '.session_id // "unknown"' 2>/dev/null || echo "unknown")
-b=$(git -C "${CLAUDE_PROJECT_DIR:-$PWD}" branch --show-current 2>/dev/null || true)
-
-if [ -z "$b" ]; then
-  exit 0
-fi
+# The session's cwd, not CLAUDE_PROJECT_DIR: in a worktree under
+# .claude/worktrees/ the project dir is the main checkout, whose branch
+# (usually main) is not the branch being edited.
+hook_cwd=$(printf '%s' "$stdin" | jq -r '.cwd // empty' 2>/dev/null || echo "")
+base_dir="${hook_cwd:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+branch_dir="$base_dir"
 
 # Skip when the target file is outside this project — auto-memory writes
 # (~/.claude/projects/.../memory/), other repos, and any /tmp scratch files
 # don't belong to this repo's git workflow and shouldn't trigger the
 # protected-branch reminder. Edit/Write/MultiEdit use file_path;
 # NotebookEdit uses notebook_path.
-project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
+project_dir="${CLAUDE_PROJECT_DIR:-$base_dir}"
 target_path=$(printf '%s' "$stdin" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null || echo "")
 if [ -n "$target_path" ] && [ -n "$project_dir" ]; then
   # Claude Code sometimes passes file_path as a project-relative string
   # (e.g. "lib/common.js") rather than an absolute path. Anchor any
-  # non-absolute value under project_dir before the prefix check or the
+  # non-absolute value under the cwd before the prefix check or the
   # case-glob silently fails and we skip the branch reminder.
   case "$target_path" in
     /*) ;;
-    *) target_path="${project_dir}/${target_path}" ;;
+    *) target_path="${base_dir}/${target_path}" ;;
   esac
   # Collapse `..` segments before the prefix check: a relative outside-project
   # edit like `../scratch/note.md` anchors to `$project_dir/../scratch/…`,
@@ -42,6 +43,15 @@ if [ -n "$target_path" ] && [ -n "$project_dir" ]; then
     "$project_dir"/*) ;;  # inside the repo — fall through to the branch check
     *) exit 0 ;;          # outside the repo — silently skip
   esac
+  # The file's own checkout decides the branch (a new file's directory may
+  # not exist yet, so climb to the nearest existing one).
+  branch_dir=$(dirname "$target_path")
+  while [ ! -d "$branch_dir" ]; do branch_dir=$(dirname "$branch_dir"); done
+fi
+
+b=$(git -C "$branch_dir" branch --show-current 2>/dev/null || true)
+if [ -z "$b" ]; then
+  exit 0
 fi
 
 emit() {
