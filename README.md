@@ -203,9 +203,8 @@ network fee on top of the price. The index refuses a sponsored transaction with 
 `error: "sponsored_unsupported"`.
 
 **aibtc MCP server** (`@aibtc/mcp-server`, tool `execute_x402_endpoint`). The tool handles the
-`402` and the paid retry. It signs a non-sponsored transaction by default, so the wallet needs
-STX for the network fee on top of the price. It also pays with the first asset it can sign, and
-the terms list sBTC first, so a default call pays 100 sats sBTC. To pay in STX, pass the tool's
+`402` and the paid retry. It signs a non-sponsored transaction by default. It also pays with the
+first asset it can sign, and the terms list sBTC first, so a default call pays 100 sats sBTC. To pay in STX, pass the tool's
 `asset` parameter:
 
 ```json
