@@ -198,6 +198,10 @@ in the free index first to skip the round-trip.
 
 ### How to pay
 
+Every client pays with a standard (non-sponsored) transaction, so the wallet needs STX for the
+network fee on top of the price. The index refuses a sponsored transaction with a `422` and
+`error: "sponsored_unsupported"`.
+
 **aibtc MCP server** (`@aibtc/mcp-server`, tool `execute_x402_endpoint`). The tool handles the
 `402` and the paid retry. It signs a non-sponsored transaction by default, so the wallet needs
 STX for the network fee on top of the price. It also pays with the first asset it can sign, and
@@ -221,10 +225,8 @@ The reference client: `index`, `terms`, and `reports` are free; `project`, `evid
 `delta` are paid. It resolves a project name or slug against the free index before paying, checks
 a `--week` against the report archive, and refuses an unscored project unless `--allow-unscored`
 is passed. It has no asset switch and pays in sBTC. Run it with `--network mainnet`,
-`NETWORK=mainnet` and `X402_PAYMENT_MODE=direct` (skills ≥ 0.43.0). The index accepts standard
-transfers only, so the wallet needs STX for the network fee on top of the price. Without direct
-mode the payment engine signs a sponsored transaction, which the index refuses with a `422` and
-`error: "sponsored_unsupported"`.
+`NETWORK=mainnet` and `X402_PAYMENT_MODE=direct` (skills ≥ 0.43.0); without direct mode its
+payment engine signs a sponsored transaction, which the index refuses.
 
 For a payment that failed, charged unexpectedly, or returned something wrong, use the **Stacks
 Index paid query problem** issue template; [Reporting a problem](#reporting-a-problem) below says
