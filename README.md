@@ -198,10 +198,13 @@ in the free index first to skip the round-trip.
 
 ### How to pay
 
+Every client pays with a standard (non-sponsored) transaction, so the wallet needs STX for the
+network fee on top of the price. The index refuses a sponsored transaction with a `422` and
+`error: "sponsored_unsupported"`.
+
 **aibtc MCP server** (`@aibtc/mcp-server`, tool `execute_x402_endpoint`). The tool handles the
-`402` and the paid retry. It signs a non-sponsored transaction by default, so the wallet needs
-STX for the network fee on top of the price. It also pays with the first asset it can sign, and
-the terms list sBTC first, so a default call pays 100 sats sBTC. To pay in STX, pass the tool's
+`402` and the paid retry. It signs a non-sponsored transaction by default. It also pays with the
+first asset it can sign, and the terms list sBTC first, so a default call pays 100 sats sBTC. To pay in STX, pass the tool's
 `asset` parameter:
 
 ```json
@@ -220,13 +223,9 @@ through to the paid call. `probe_x402_endpoint` takes the same `asset` parameter
 The reference client: `index`, `terms`, and `reports` are free; `project`, `evidence`, and
 `delta` are paid. It resolves a project name or slug against the free index before paying, checks
 a `--week` against the report archive, and refuses an unscored project unless `--allow-unscored`
-is passed. It has no asset switch and pays in sBTC. Run it with `--network mainnet` and
-`NETWORK=mainnet`. Its payment engine signs a sponsored transaction by default; the index relays
-those (sponsored relay switched on in production 2026-09-16), so a wallet holding only sBTC can
-pay. Set `X402_PAYMENT_MODE=direct` (skills ≥ 0.43.0) to sign a standard transfer instead; the
-wallet then also pays the STX fee. A `422` with `error: "sponsored_unsupported"` means the index
-is not admitting sponsored transactions at that moment: switch to direct mode and hold STX for
-gas.
+is passed. It has no asset switch and pays in sBTC. Run it with `--network mainnet`,
+`NETWORK=mainnet` and `X402_PAYMENT_MODE=direct` (skills ≥ 0.43.0); without direct mode its
+payment engine signs a sponsored transaction, which the index refuses.
 
 For a payment that failed, charged unexpectedly, or returned something wrong, use the **Stacks
 Index paid query problem** issue template; [Reporting a problem](#reporting-a-problem) below says
