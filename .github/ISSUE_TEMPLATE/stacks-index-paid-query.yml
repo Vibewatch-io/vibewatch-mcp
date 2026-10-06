@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting. Paid queries settle on Stacks, so the fields below let us match your report to the payment ledger and the relay's record. Free-tier problems (`index`, `terms`, `reports`) can use this form too — leave the payment fields empty.
+        Thanks for reporting. Paid queries settle on Stacks, so the fields below let us match your report to the payment ledger and the on-chain transaction. Free-tier problems (`index`, `terms`, `reports`) can use this form too — leave the payment fields empty.
   - type: input
     id: command
     attributes:
