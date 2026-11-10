@@ -11,7 +11,7 @@
  *   - OAuth (default): run `vibewatch-mcp connect-buzz` once — it signs you in
  *     via the browser and caches tokens that the bridge reuses headlessly.
  *   - Key: set VIBEWATCH_MCP_KEY to an org-scoped key (starts with vw_mcp_),
- *     minted in app.vibewatch.io → Settings → API Access.
+ *     minted in app.vibewatch.io → Settings → MCP Access.
  *
  * Optional env:  VIBEWATCH_MCP_URL  — override the server URL (self-hosted /
  *                staging).
@@ -65,11 +65,11 @@ function writeAuthGuidance(keyMode) {
     keyMode
       ? "\nvibewatch-mcp: the server rejected this VIBEWATCH_MCP_KEY. " +
           "Check the key (it should start with vw_mcp_), or mint a new " +
-          "one in app.vibewatch.io → Settings → API Access.\n"
+          "one in app.vibewatch.io → Settings → MCP Access.\n"
       : "\nvibewatch-mcp: not signed in (or the sign-in expired). " +
           "Run `vibewatch-mcp connect-buzz` to sign in via the browser, " +
           "or set VIBEWATCH_MCP_KEY to an org key from " +
-          "app.vibewatch.io → Settings → API Access.\n"
+          "app.vibewatch.io → Settings → MCP Access.\n"
   );
 }
 
