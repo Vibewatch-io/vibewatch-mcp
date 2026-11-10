@@ -2,7 +2,7 @@
   "name": "vibewatch",
   "displayName": "Vibewatch",
   "description": "Give Cursor access to your community's vibe. Connects Cursor to your Vibewatch organization through the hosted Vibewatch MCP server — sentiment overview, daily trend, message search, daily insights, weekly reports, and market context, all read-only. Sign in with your Vibewatch account. Social listening for web3 teams.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "Vibewatch",
     "email": "support@vibewatch.io"
