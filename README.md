@@ -2,7 +2,7 @@
 
 Connect any MCP client to your [Vibewatch](https://vibewatch.io) community-sentiment data.
 
-Vibewatch's MCP server exposes eight read-only tools — seven over your organization's data (sentiment overview, sentiment trend, message search, daily insights, weekly reports, market context, and org details) plus public Stacks ecosystem sentiment. This package is a thin stdio bridge to that server: it wraps [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) with the Vibewatch server URL and auth handling built in, plus a one-command setup for [Buzz](https://github.com/block/buzz) agents.
+Vibewatch's MCP server exposes nine read-only tools. Seven read your organization's data (sentiment overview, sentiment trend, message search, daily insights, weekly reports, market context, and org details). Two are public and need no account: what Vibewatch is and what it costs, and Stacks ecosystem sentiment. This package is a thin stdio bridge to that server: it wraps [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) with the Vibewatch server URL and auth handling built in, plus a one-command setup for [Buzz](https://github.com/block/buzz) agents.
 
 ## Use with Claude
 
@@ -11,13 +11,13 @@ Claude connects to the hosted server directly, so there's nothing to install:
 - **Claude (web, desktop, Cowork):** add a custom connector in Claude's connector settings with the URL `https://api.vibewatch.io/mcp/`, leave the OAuth client ID and secret blank, then click **Connect**.
 - **Claude Code:** run `claude mcp add --transport http vibewatch https://api.vibewatch.io/mcp/`, then `/mcp` to sign in. If you've already run `connect-buzz` or installed the [plugin](#agent-marketplace-plugin), skip this: Claude Code already has Vibewatch, and adding it again mounts the same tools twice.
 
-Connecting opens a Vibewatch sign-in page. Sign in, pick the organization Claude can read, and approve. Claude can then read that organization's data through the eight [tools](#tools) below, none of which change anything.
+Connecting opens a Vibewatch sign-in page. Sign in, or start the 7-day free trial there if you don't have an account, then pick the organization Claude can read and approve. Claude can then read that organization's data through the [tools](#tools) below, none of which change anything.
 
 Before you connect:
 
-- MCP access is opt-in per organization. An owner or admin enables it in [app.vibewatch.io](https://app.vibewatch.io) → **Settings → API Access**. After that, any member of the organization can connect, including viewers.
+- MCP access is opt-in per organization. An owner or admin turns it on by approving a connection on the sign-in page, or in [app.vibewatch.io](https://app.vibewatch.io) → **Settings → MCP Access**. After that, any member of the organization can connect, including viewers.
 - It's available on every plan, including the free trial.
-- Revoke Claude's access any time from **Settings → API Access**, or disconnect it in Claude.
+- Revoke Claude's access any time from **Settings → MCP Access**, or disconnect it in Claude.
 
 Try "What's the vibe in my community this week?", "Summarize our latest weekly Vibewatch report", or "Find negative Discord messages from the last 7 days."
 
@@ -34,14 +34,14 @@ vibewatch-mcp connect-buzz
 
 `connect-buzz` signs you in to Vibewatch in the browser (no key to mint or copy), caches the sign-in for headless reuse, then registers the bridge in every agent harness it finds on your machine — Claude Code, Codex, and Goose. Restart your Buzz agents and they can answer questions from your community data.
 
-Requires Node 18+. MCP access is opt-in per organization — an owner or admin enables it in [app.vibewatch.io](https://app.vibewatch.io) → **Settings → API Access**.
+Requires Node 18+. MCP access is opt-in per organization: an owner or admin turns it on by approving the sign-in, or in [app.vibewatch.io](https://app.vibewatch.io) → **Settings → MCP Access**.
 
 Worth knowing:
 
 - The registration is **user scope**: every session of a configured harness on your machine can query Vibewatch, not just Buzz-spawned ones. The data is read-only community sentiment for your organization.
 - To switch organizations, run `vibewatch-mcp connect-buzz --reset`.
 - After upgrading vibewatch-mcp, run `connect-buzz` once more — the cached sign-in is keyed to the bundled `mcp-remote` version.
-- To undo: `claude mcp remove --scope user vibewatch`, `codex mcp remove vibewatch`, or delete the `extensions.vibewatch` entry from `~/.config/goose/config.yaml` (Windows: `%APPDATA%\Block\goose\config\config.yaml`). Revoke the app's access any time from **Settings → API Access**.
+- To undo: `claude mcp remove --scope user vibewatch`, `codex mcp remove vibewatch`, or delete the `extensions.vibewatch` entry from `~/.config/goose/config.yaml` (Windows: `%APPDATA%\Block\goose\config\config.yaml`). Revoke the app's access any time from **Settings → MCP Access**.
 
 For the full Vibewatch-on-Buzz install — report delivery into a channel plus a ready-made @vibewatch persona — open the **Buzz tile** under **Settings → Reports** in app.vibewatch.io and follow the setup walkthrough.
 
@@ -49,7 +49,7 @@ For the full Vibewatch-on-Buzz install — report delivery into a channel plus a
 
 Where a browser sign-in isn't possible, an org-scoped key works everywhere the bridge runs:
 
-1. In [app.vibewatch.io](https://app.vibewatch.io), open **Settings → API Access** and mint a key. Keys start with `vw_mcp_` and are shown once — store them like passwords.
+1. In [app.vibewatch.io](https://app.vibewatch.io), open **Settings → MCP Access** and mint a key. Keys start with `vw_mcp_` and are shown once — store them like passwords.
 2. Pass it to `connect-buzz` (`vibewatch-mcp connect-buzz --key vw_mcp_...`) or set it directly where the bridge runs:
 
 ```bash
@@ -100,6 +100,7 @@ The bridge never puts the key on a process argument list — it hands `mcp-remot
 | `get_market_context` | Market backdrop for sentiment reads |
 | `get_organization` | Org and connected-source details |
 | `get_stacks_ecosystem_sentiment` | Stacks ecosystem-wide vibe — public data, not this org's |
+| `get_vibewatch_product_info` | What Vibewatch is, its plans and prices, and how to connect — public, no account needed |
 
 ## Agent marketplace plugin
 
