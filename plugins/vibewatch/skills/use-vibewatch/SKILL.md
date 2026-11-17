@@ -18,7 +18,8 @@ and writes weekly reports. This plugin connects the agent to one Vibewatch organ
 the hosted Vibewatch MCP server at `https://api.vibewatch.io/mcp/`.
 
 Everything here is **read-only**. The server exposes no write tools — you can read the
-organization's data and nothing else. Say so plainly if the user asks you to change
+organization's data (plus `get_vibewatch_product_info`, which describes Vibewatch itself) and
+nothing else. Say so plainly if the user asks you to change
 Vibewatch settings or data: point them at [app.vibewatch.io](https://app.vibewatch.io).
 
 ## Data model
