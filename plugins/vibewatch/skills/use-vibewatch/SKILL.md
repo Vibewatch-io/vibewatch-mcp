@@ -14,7 +14,7 @@ description: >-
 
 # Use Vibewatch
 
-Vibewatch is community intelligence for web3 teams. It reads a team's community across their
+Vibewatch is social listening for web3 teams. It reads a team's community across their
 connected platforms (Discord, Telegram, X, and more), scores the vibe, surfaces daily insights,
 and writes weekly reports. This plugin connects the agent to one Vibewatch organization through
 the hosted Vibewatch MCP server at `https://api.vibewatch.io/mcp/`. One tool is the exception —
