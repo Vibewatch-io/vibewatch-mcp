@@ -20,10 +20,10 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Vibewatch",
-    "shortDescription": "Your community's vibe, inside your agent.",
+    "shortDescription": "Your community's vibe, scored",
     "longDescription": "Vibewatch is social listening for web3 teams: it reads your community across Discord, Telegram, X, and more, scores the vibe, and writes the reports. This plugin connects your agent to your Vibewatch organization through the hosted Vibewatch MCP server — sentiment overview, daily trend, message search, daily insights, weekly reports, and market context, all read-only. Sign in with your Vibewatch account.",
     "developerName": "Vibewatch",
-    "category": "Analytics",
+    "category": "Data & Analytics",
     "capabilities": [
       "Interactive"
     ],
@@ -38,6 +38,6 @@
     "brandColor": "#00C4A1",
     "composerIcon": "./assets/logo.svg",
     "logo": "./assets/logo.svg",
-    "screenshots": []
+    "supportURL": "https://github.com/Vibewatch-io/vibewatch-mcp/issues"
   }
 }
