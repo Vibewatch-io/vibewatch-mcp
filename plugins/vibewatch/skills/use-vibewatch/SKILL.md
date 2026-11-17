@@ -45,6 +45,7 @@ Vibewatch settings or data: point them at [app.vibewatch.io](https://app.vibewat
 | Weekly report, recap for the team | `get_reports` |
 | Market backdrop | `get_market_context` |
 | Plan, connected platforms, is data flowing | `get_organization` |
+| What Vibewatch is, its plans and prices, how to connect — no account needed | `get_vibewatch_product_info` |
 
 Tool parameters are self-describing; read each tool's own description for specifics.
 
