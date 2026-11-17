@@ -2,7 +2,7 @@
 
 Connect any MCP client to your [Vibewatch](https://vibewatch.io) community-sentiment data.
 
-Vibewatch's MCP server exposes nine read-only tools. Seven read your organization's data (sentiment overview, sentiment trend, message search, daily insights, weekly reports, market context, and org details). Two are public and need no account: what Vibewatch is and what it costs, and Stacks ecosystem sentiment. This package is a thin stdio bridge to that server: it wraps [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) with the Vibewatch server URL and auth handling built in, plus a one-command setup for [Buzz](https://github.com/block/buzz) agents.
+Vibewatch's MCP server exposes eight read-only tools. Seven read your organization's data (sentiment overview, sentiment trend, message search, daily insights, weekly reports, market context, and org details). One is public and needs no account: what Vibewatch is and what it costs. This package is a thin stdio bridge to that server: it wraps [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) with the Vibewatch server URL and auth handling built in, plus a one-command setup for [Buzz](https://github.com/block/buzz) agents.
 
 ## Use with Claude
 
@@ -99,7 +99,6 @@ The bridge never puts the key on a process argument list — it hands `mcp-remot
 | `get_reports` | Weekly report content |
 | `get_market_context` | Market backdrop for sentiment reads |
 | `get_organization` | Org and connected-source details |
-| `get_stacks_ecosystem_sentiment` | Stacks ecosystem-wide vibe — public data, not this org's |
 | `get_vibewatch_product_info` | What Vibewatch is, its plans and prices, and how to connect — public, no account needed |
 
 ## Agent marketplace plugin
@@ -129,113 +128,10 @@ equality), merge, then open a SHA-bump PR against `xai-org/plugin-marketplace` (
 pins a commit, so Grok installs don't see changes until the pin advances). Other marketplaces
 follow their own update flows.
 
-## Stacks Vibe Index paid tier (x402)
-
-The Stacks Vibe Index has a free tier and a paid tier. The free tier is the public index and the
-weekly-report archive. The paid tier is depth per query, settled on Stacks over x402: the first
-request answers `402` with payment terms, the client signs, and the retry carries the payment. No
-key and no account are involved.
-
-### Free
-
-- `GET https://api.vibewatch.io/api/v1/public/stacks-index` — the live index: ecosystem
-  composite, `projects[]` (each with `slug`, `name`, `score`), history, themes, governance, and
-  `suppressed[]`. The `get_stacks_ecosystem_sentiment` MCP tool serves the same data.
-- `GET https://api.vibewatch.io/api/v1/public/stacks-index/reports` — the weekly-report archive.
-  Each entry's `week_start` is the key for paid evidence.
-
-### Paid
-
-Terms come from the discovery document at `https://api.vibewatch.io/.well-known/x402.json`. As of
-2026-09-16 it advertises three resources, all on network `stacks:1`, paying to
-`SP3PHGPE8G09FFBSH6NVM3J5S2118M8YA825HWQY1`, with two accepted assets listed in this order:
-
-| Order | Asset | Amount per query |
-|---|---|---|
-| 1 | `SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token` (sBTC) | `100` sats |
-| 2 | `STX` | `300000` µSTX (0.3 STX) |
-
-| Resource | Returns |
-|---|---|
-| `/api/v1/public/stacks-index/pro/projects/{slug}` | One panel project's daily composite series (`?days=`, up to 90). The paid part is the series; the response also repeats the project's current score and week-over-week change, which the free index already publishes. `slug` is the free index's `projects[].slug` verbatim; live slugs carry a suffix (e.g. `zest-protocol-3672`). |
-| `/api/v1/public/stacks-index/pro/evidence/{week_start}` | The public posts backing each theme of one weekly report. `week_start` is a value from `reports`. |
-| `/api/v1/public/stacks-index/pro/delta?since=<ISO-8601>` | What changed since a timestamp, hour-bucketed: per-project score moves, composite then and now, current themes, reports published since. `since` is a UTC timestamp (`2026-09-15T00:00:00Z`) or a date (`2026-09-15`, read as midnight UTC); anything else is a 400 `invalid_since`. `since` older than 90 days is clamped. |
-
-One request is one payment; running the same query again pays again. Read the discovery
-document before the first paid call: when the paid tier is switched off it serves empty
-`accepts`.
-
-### Paid response shape
-
-Every paid response is the same envelope: `schema_version`, `tier: "paid"`, `as_of`,
-`resource`, `payment`, `data`, `suppressed[]`.
-
-- `payment` is the settlement the index verified for this response: `txid`, `payer`, `amount`,
-  `asset`, `network`, and `payment_identifier` (the id we match against the ledger).
-  `payment.txid` is the receipt to cite.
-- `data` is the resource payload. `project`: `slug`, `name`, `latest { score, wow_change,
-  as_of_date }`, `series[] { date, composite }` (scored days only, oldest first). `evidence`:
-  `week_start`, `themes[]` with `receipts[]`; a theme with only in-server evidence has
-  `receipts: []`, `suppressed: true`, `reason: "no_public_evidence"`. `delta`: `since_effective`,
-  `index { composite_then, composite_now, change }`, `projects[]`, `reports_published[]`,
-  `themes_current[]`.
-- `suppressed[]` lists slices withheld for privacy (`slice`, `reason`, e.g. `below_min_orgs`).
-  Report them as withheld, not zero.
-
-### Unscored projects
-
-A panel project whose free-index `score` is `null` (today `boom` and `jing-swap`) has no scored
-days, so there is no paid series to sell. The index refuses such a slug for free, before issuing
-any `402`, so nothing can be charged:
-
-```
-GET /api/v1/public/stacks-index/pro/projects/boom
-HTTP 422
-{"detail":{"error":"project_not_scored","slug":"boom","days":90}}
-```
-
-Scored slugs answer the usual `402`; slugs that are not on the panel answer `404`. Check `score`
-in the free index first to skip the round-trip.
-
-### How to pay
-
-Every client pays with a standard (non-sponsored) transaction, so the wallet needs STX for the
-network fee on top of the price. The index refuses a sponsored transaction with a `422` and
-`error: "sponsored_unsupported"`.
-
-**aibtc MCP server** (`@aibtc/mcp-server`, tool `execute_x402_endpoint`). The tool handles the
-`402` and the paid retry. It signs a non-sponsored transaction by default. It also pays with the
-first asset it can sign, and the terms list sBTC first, so a default call pays 100 sats sBTC. To pay in STX, pass the tool's
-`asset` parameter:
-
-```json
-{
-  "url": "https://api.vibewatch.io/api/v1/public/stacks-index/pro/projects/zest-protocol-3672",
-  "params": { "days": "30" },
-  "asset": "STX",
-  "autoApprove": true
-}
-```
-
-Leave `autoApprove` unset to get a cost quote first; the quote's `callWith` block carries `asset`
-through to the paid call. `probe_x402_endpoint` takes the same `asset` parameter.
-
-**aibtcdev/skills `vibewatch-sentiment`** ([source](https://github.com/aibtcdev/skills/tree/main/vibewatch-sentiment)).
-The reference client: `index`, `terms`, and `reports` are free; `project`, `evidence`, and
-`delta` are paid. It resolves a project name or slug against the free index before paying, checks
-a `--week` against the report archive, and refuses an unscored project unless `--allow-unscored`
-is passed. It has no asset switch and pays in sBTC. Run it with `--network mainnet`,
-`NETWORK=mainnet` and `X402_PAYMENT_MODE=direct` (skills ≥ 0.43.0); without direct mode its
-payment engine signs a sponsored transaction, which the index refuses.
-
-For a payment that failed, charged unexpectedly, or returned something wrong, use the **Stacks
-Index paid query problem** issue template; [Reporting a problem](#reporting-a-problem) below says
-what it asks for.
-
 ## License
 
 Apache-2.0
 
 ## Reporting a problem
 
-Agents and operators: file issues here — this is the public tracker for the Vibewatch MCP server **and** the Stacks Vibe Index paid (x402) tier. Use the **Stacks Index paid query problem** template for anything involving a payment; it asks for the response body's `error` / `facilitator_reason` / `payment_identifier` and the txid, which is what we need to match your report to the ledger.
+Agents and operators: file issues here — this is the public tracker for the Vibewatch MCP server.
